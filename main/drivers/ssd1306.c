@@ -16,14 +16,7 @@
 #define TAG "SSD1306"
 
 static uint8_t framebuf[SSD1306_HEIGHT / 8][SSD1306_WIDTH];
-static uint8_t show_fps = 1;
-static uint8_t current_fps = 0;
 static uint32_t frame_counter = 0;
-
-void ssd1306_set_fps(uint8_t fps)
-{
-    current_fps = fps;
-}
 
 uint32_t ssd1306_get_frames(void)
 {
@@ -91,19 +84,17 @@ void ssd1306_clear(void)
             framebuf[y][x] = 0x00;
 }
 
-static void draw_fps_overlay(void)
+void ssd1306_clear_pages(uint8_t p0, uint8_t p1)
 {
-    if (!show_fps) return;
-    int fps = current_fps;
-    if (fps > 99) fps = 99;
-    char fb[] = { 'F', ':', '0' + fps / 10, '0' + fps % 10, 0 };
-    ssd1306_draw_string(104, 0, fb);
+    if (p1 >= SSD1306_HEIGHT / 8) p1 = SSD1306_HEIGHT / 8 - 1;
+    for (int y = p0; y <= p1; y++)
+        for (int x = 0; x < SSD1306_WIDTH; x++)
+            framebuf[y][x] = 0x00;
 }
 
 void ssd1306_update(void)
 {
     frame_counter++;
-    draw_fps_overlay();
     i2c_cmd_handle_t h = i2c_cmd_link_create();
     i2c_master_start(h);
     i2c_master_write_byte(h, (SSD1306_I2C_ADDR << 1) | I2C_MASTER_WRITE, true);
@@ -118,6 +109,28 @@ void ssd1306_update(void)
     i2c_master_write_byte(h, (SSD1306_I2C_ADDR << 1) | I2C_MASTER_WRITE, true);
     i2c_master_write_byte(h, 0x40, true);
     for (int y = 0; y < SSD1306_HEIGHT / 8; y++)
+        i2c_master_write(h, framebuf[y], SSD1306_WIDTH, true);
+    i2c_master_stop(h);
+    i2c_master_cmd_begin(I2C_MASTER_NUM, h, I2C_MASTER_TIMEOUT_MS / portTICK_PERIOD_MS);
+    i2c_cmd_link_delete(h);
+}
+
+void ssd1306_update_area(uint8_t p0, uint8_t p1)
+{
+    i2c_cmd_handle_t h = i2c_cmd_link_create();
+    i2c_master_start(h);
+    i2c_master_write_byte(h, (SSD1306_I2C_ADDR << 1) | I2C_MASTER_WRITE, true);
+    i2c_master_write_byte(h, 0x00, true);
+    i2c_master_write_byte(h, 0x21, true);
+    i2c_master_write_byte(h, 0, true);
+    i2c_master_write_byte(h, 127, true);
+    i2c_master_write_byte(h, 0x22, true);
+    i2c_master_write_byte(h, p0, true);
+    i2c_master_write_byte(h, p1, true);
+    i2c_master_start(h);
+    i2c_master_write_byte(h, (SSD1306_I2C_ADDR << 1) | I2C_MASTER_WRITE, true);
+    i2c_master_write_byte(h, 0x40, true);
+    for (uint8_t y = p0; y <= p1; y++)
         i2c_master_write(h, framebuf[y], SSD1306_WIDTH, true);
     i2c_master_stop(h);
     i2c_master_cmd_begin(I2C_MASTER_NUM, h, I2C_MASTER_TIMEOUT_MS / portTICK_PERIOD_MS);

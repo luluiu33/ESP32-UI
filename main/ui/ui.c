@@ -6,7 +6,8 @@
 #include "about.h"
 #include "circle_test.h"
 #include "display_test.h"
-#include "ssd1306.h"
+#include "display.h"
+#include "display_layout.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -19,7 +20,8 @@ static uint32_t center_press_ms = 0;
 
 void ui_init(void)
 {
-    ssd1306_init();
+    display_init();
+    display_set_title("Main Menu");
     menu_draw();
 }
 
@@ -31,6 +33,7 @@ uint8_t ui_is_test(void)
 void ui_exit_test(void)
 {
     mode = UI_MENU;
+    display_set_title("Main Menu");
     menu_reset();
     menu_draw();
 }
@@ -46,8 +49,15 @@ void ui_process(input_event_t ev, joy_state_t *js)
         center_press_ms = 0;
     }
 
-    if (center_press_ms && (now - center_press_ms) > LONG_PRESS_MS && mode != UI_MENU) {
-        if (mode == UI_CAL) cal_cancel();
+    if (center_press_ms && (now - center_press_ms) > LONG_PRESS_MS) {
+        center_press_ms = 0;
+        if (mode == UI_MENU) {
+            mode = UI_CAL;
+            display_set_title("Calibrate");
+            cal_init();
+            cal_draw();
+            return;
+        }
         ui_exit_test();
         return;
     }
@@ -62,26 +72,24 @@ void ui_process(input_event_t ev, joy_state_t *js)
             if (f == 0) {
                 mode = UI_CIRCLE;
                 circle_test_reset();
-                ssd1306_clear();
+                display_set_title("Circle");
+                display_clear();
                 return;
             } else if (f == 1) {
                 mode = UI_TEST;
                 test_ui_reset();
-                ssd1306_clear();
+                display_set_title("Button");
+                display_clear();
                 return;
             } else if (f == 2) {
                 mode = UI_DISP_TEST;
                 disp_test_enter(0);
-                ssd1306_clear();
+                display_clear();
                 return;
             } else if (f == 3) {
-                mode = UI_CAL;
-                cal_init();
-                cal_draw();
-                return;
-            } else if (f == 4) {
                 mode = UI_ABOUT;
                 about_enter();
+                display_set_title("About");
                 about_draw();
                 return;
             }
@@ -92,10 +100,10 @@ void ui_process(input_event_t ev, joy_state_t *js)
     case UI_DISP_TEST:
         if (ev == EV_UP) {
             disp_test_prev();
-            ssd1306_clear();
+            display_clear();
         } else if (ev == EV_DOWN) {
             disp_test_next();
-            ssd1306_clear();
+            display_clear();
         }
         disp_test_draw(js);
         break;
@@ -112,6 +120,7 @@ void ui_process(input_event_t ev, joy_state_t *js)
         if (cal_process()) {
             mode = UI_MENU;
             menu_reset();
+            display_set_title("Main Menu");
             menu_draw();
         }
         break;

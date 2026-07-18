@@ -1,6 +1,6 @@
 # ESP32 OLED + LCD 显示项目
 
-基于 ESP32-WROOM-32，SSD1306 OLED（I2C）与 ST7735 LCD（SPI）双屏驱动，摇杆输入，菜单系统，动画演示。
+基于 ESP32-WROOM-32，SSD1306 OLED（I2C）与 ST7735 LCD（SPI）双屏驱动，编译时切换。摇杆输入，菜单系统，动画演示。
 
 ## 硬件连接
 
@@ -52,8 +52,12 @@
 ├── main/
 │   ├── CMakeLists.txt
 │   ├── main.c                  # 入口：初始化，主循环轮询输入，FPS/CPU 统计
+│   ├── Kconfig.projbuild       # Display type 选择 (OLED / LCD)
 │   ├── drivers/
-│   │   ├── ssd1306.h / .c      # SSD1306 I2C 驱动 + 6×8 字库 + 绘图API
+│   │   ├── display.h / .c      # 统一 display API 抽象层（编译时转发）
+│   │   ├── display_layout.h    # OLED/LCD 布局宏（页面索引 + 像素坐标）
+│   │   ├── ssd1306.h / .c      # SSD1306 I2C 驱动 + framebuffer 绘图 API
+│   │   ├── lcd_st7735.h / .c   # ST7735 SPI LCD 驱动 (128×160)
 │   │   └── font_6x8.h / .c     # 6×8 ASCII 字库 (0x20~0x7E)
 │   ├── input/
 │   │   ├── input.h / .c        # 输入处理：双轴ADC + 按键 + 边缘状态机 + 动态轴映射
@@ -62,20 +66,21 @@
 │   │   ├── ui.h / .c           # 模式状态机 (MENU/CIRCLE/TEST/DISP_TEST/CAL/ABOUT)
 │   │   ├── menu.h / .c         # 滚动菜单 (5项, 3可见)
 │   │   ├── about.h / .c        # 关于页 (可滚动文本)
-│   │   └── ui_common.h / .c    # 共享绘图原语
-│   ├── tests/
-│   │   ├── test_ui.h / .c      # 十字箭头方向测试
-│   │   ├── circle_test.h / .c  # 圆轨迹追踪 + 摇杆点
-│   │   └── display_test.h / .c # 动画演示集 (正弦波/弹球/进度条/图形/字库/跑马灯)
-│   └── lcd_st7735.h / .c       # ST7735 SPI LCD 驱动 (160×128)
-│   └── lcd_ui.h / .c           # LCD UI 层
+│   │   └── ui_common.h / .c    # 共享绘图原语 + 箭头绘制
+│   └── tests/
+│       ├── test_ui.h / .c      # 十字箭头方向测试
+│       ├── circle_test.h / .c  # 圆轨迹追踪 + 摇杆点
+│       └── display_test.h / .c # 动画演示集 (正弦波/弹球/进度条/图形/字库/跑马灯)
 └── docs/
     └── esp32-wroom-32-datasheet.md
+    └── lcd_integration_plan.md
+    └── project_design.md
 ```
 
 ## 构建与烧录
 
 ```bash
+idf.py menuconfig          # → Display type → 选择 OLED (SSD1306) 或 LCD (ST7735)
 idf.py build
 idf.py -p COMx -b 1500000 flash
 idf.py -p COMx monitor    # 串口输出 CPU 占用率
@@ -83,16 +88,21 @@ idf.py -p COMx monitor    # 串口输出 CPU 占用率
 
 ## 显示特性
 
-### OLED (SSD1306)
-- **分辨率**：128×64 像素
-- **黄色区域**：前 16 像素行 (y=0~15)，标题文字
-- **蓝色区域**：后 48 像素行 (y=16~63)，图形内容
-- **字体**：6×8 像素
-- **接口**：硬件 I2C, 400kHz
+### 统一抽象层
+所有 UI/测试代码通过 `display_*()` API 显示，不直接操作屏幕硬件。
+编译时由 Kconfig（`CONFIG_DISPLAY_OLED` / `CONFIG_DISPLAY_LCD`）选择后端。
+布局宏（`display_layout.h`）自动适配两种分辨率。
 
-### LCD (ST7735)
-- **分辨率**：160×128 像素 (RGB)
+### OLED (SSD1306) — 128×64
+- **接口**：硬件 I2C, 400kHz
+- **字体**：6×8 像素，8 页面 (0~7)
+- **布局**：标题 (page 0) + 内容 (page 1~7)
+
+### LCD (ST7735) — 128×160
 - **接口**：硬件 SPI
+- **字体**：6×8 像素，20 页面 (0~19)
+- **布局**：状态栏黑底白字 16px (page 0~1) + 内容区白底黑字 (page 2~19)
+- **颜色**：`display_clear()` 清白屏 → 绘黑底标题栏
 
 ## 功能
 
@@ -114,7 +124,7 @@ idf.py -p COMx monitor    # 串口输出 CPU 占用率
 - 多行滚动文本，显示项目信息和版本
 
 ### 系统状态
-- OLED 右上角实时帧率 `F:xx`（仅统计实际屏幕刷新次数）
+- OLED：右上角实时帧率 `F:xx`；LCD：状态栏右侧实时帧率 `FPS:xx`
 - 串口每 ~1s 输出 CPU 占用率与帧率：`CPU:12%  FPS:35`
 - 输入时 LED 亮起指示
 

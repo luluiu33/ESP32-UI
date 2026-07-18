@@ -21,5 +21,7 @@ void ssd1306_draw_char(uint8_t x, uint8_t y, char c);
 void ssd1306_draw_string(uint8_t x, uint8_t y, const char *str);
 void ssd1306_set_fps(uint8_t fps);
 uint32_t ssd1306_get_frames(void);
+void ssd1306_update_area(uint8_t p0, uint8_t p1);
+void ssd1306_clear_pages(uint8_t p0, uint8_t p1);
 
 #endif

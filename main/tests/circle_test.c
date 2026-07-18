@@ -1,10 +1,8 @@
 #include "circle_test.h"
 #include "input.h"
-#include "ssd1306.h"
+#include "display.h"
+#include "display_layout.h"
 
-#define CIRCLE_R      22
-#define CENTER_X      64
-#define CENTER_Y      40
 #define DOT_R          3
 #define DOT_CENTER_R   2
 
@@ -29,22 +27,22 @@ void circle_test_draw(joy_state_t *js)
     if (ox > -400 && ox < 400) ox = 0;
     if (oy > -400 && oy < 400) oy = 0;
 
-    int px = ox * CIRCLE_R / 2048;
-    int py = oy * CIRCLE_R / 2048;
+    int px = ox * CIRCLE_RAD / 2048;
+    int py = oy * CIRCLE_RAD / 2048;
 
-    if (px < -CIRCLE_R) px = -CIRCLE_R;
-    if (px >  CIRCLE_R) px =  CIRCLE_R;
-    if (py < -CIRCLE_R) py = -CIRCLE_R;
-    if (py >  CIRCLE_R) py =  CIRCLE_R;
+    if (px < -CIRCLE_RAD) px = -CIRCLE_RAD;
+    if (px >  CIRCLE_RAD) px =  CIRCLE_RAD;
+    if (py < -CIRCLE_RAD) py = -CIRCLE_RAD;
+    if (py >  CIRCLE_RAD) py =  CIRCLE_RAD;
 
     int d_sq = px * px + py * py;
-    int r_sq = CIRCLE_R * CIRCLE_R;
+    int r_sq = CIRCLE_RAD * CIRCLE_RAD;
     if (d_sq > r_sq) {
         int d = 0;
         while (d * d < d_sq) d++;
         if (d > 0) {
-            px = px * CIRCLE_R / d;
-            py = py * CIRCLE_R / d;
+            px = px * CIRCLE_RAD / d;
+            py = py * CIRCLE_RAD / d;
         }
     }
 
@@ -53,10 +51,9 @@ void circle_test_draw(joy_state_t *js)
     prev_px = px;
     prev_py = py;
 
-    ssd1306_clear();
-    ssd1306_draw_string(34, 0, "Circle");
-    ssd1306_draw_circle(CENTER_X, CENTER_Y, CIRCLE_R, 0);
-    ssd1306_draw_circle(CENTER_X, CENTER_Y, DOT_CENTER_R, 1);
-    ssd1306_draw_circle(CENTER_X + px, CENTER_Y + py, DOT_R, 1);
-    ssd1306_update();
+    display_clear();
+    display_draw_circle(CIRCLE_CX, CIRCLE_CY, CIRCLE_RAD, 0);
+    display_draw_circle(CIRCLE_CX, CIRCLE_CY, DOT_CENTER_R, 1);
+    display_draw_circle(CIRCLE_CX + px, CIRCLE_CY + py, DOT_R, 1);
+    display_update();
 }

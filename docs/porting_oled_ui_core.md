@@ -1,263 +1,228 @@
-# OLED_UI_Core 移植指南 — ESP32 项目
+# OLED_UI_Core 吸收分析与发展计划
 
-## 概述
-
-将 OLED_UI_Core（STM32F4 HAL 库）移植到当前 ESP32 (ESP-IDF) 项目。
-
-## 移植架构
+## 当前项目状态（吸收前）
 
 ```
-当前项目                         移植后
-─────────                      ──────
-main/CMakeLists.txt            main/CMakeLists.txt
-main/main.c                    main/main.c (适配)
-  ui/                            OLED_UI_Core/
-  drivers/                         OLED_UI_Launcher.c/h
-  input/                          OLED_UI/OLED_UI.c/h
-  tests/                          OLED_UI/OLED_UI_MenuData.c/h
-  ...                             Driver/Hardware_Driver/
-                                    OLED_UI_Driver.c/h
-                                    OLED_driver.c/h
-                                  Driver/Software_Driver/
-                                    OLED.c/h
-                                    OLED_Fonts.c/h
-                                    misc.c/h
+display.h/c            ← 抽象层已就位（OLED/LCD 编译切换）
+ssd1306.c/h            ← OLED 驱动
+lcd_st7735.c/h         ← LCD 驱动（含 draw_stringf）
+font_6x8.c/h           ← 单一 6x8 字库
+ui/ui.c                ← 6 状态扁平状态机
+ui/menu.c/about.c      ← 菜单/关于
+tests/display_test.c   ← 6 种动画
+input/input.c          ← ADC 摇杆 + GPIO 按键
+Kconfig.projbuild      ← OLED/LCD 选择
+display_layout.h       ← 分辨率适配宏
 ```
 
-## 移植步骤
+---
 
-### 步骤 1：复制代码
+## 吸收评估矩阵
 
-将 `Examples/OLED_UI_Core/HAL/OLED_UI_Core/` 复制到 `main/OLED_UI_Core/`
+逐项对比 OLED_UI_Core 组件，标记是否值得吸收及理由：
 
-### 步骤 2：硬件驱动适配 (`OLED_driver.c`)
+### A. 绘图函数 (Software_Driver/OLED.c)
 
-OLED_UI_Core 依赖底层 `OLED_driver.c` 提供以下 API，需要在 ESP32 上重新实现：
+| 功能 | 来源行 | 当前项目 | 吸收？ | 理由 |
+|------|--------|---------|--------|------|
+| `OLED_Printf()` | 631 | `snprintf`+`draw_string` | **★★★** | 单次调用替代手动拼接，遍布 9 个文件 |
+| `OLED_PrintfMix()` | 685 | 无 | — | 中英文混排，暂不需要 |
+| `OLED_ShowNum()` | 348 | 无 | **★★★** | 类型化数字输出，便利 |
+| `OLED_ShowFloatNum()` | — | 无 | **★★★** | 浮点数直接显示 |
+| `OLED_ClearArea()` | 151 | 无（只能全屏清） | **★★★** | 局部更新，减少闪烁 |
+| `OLED_ReverseArea()` | — | 无 | **★★★** | 选中/高亮效果 |
+| `OLED_Reverse()` | — | 无 | **★★** | 全屏反色 |
+| `OLED_ShowStringArea()` | 785 | 无 | **★★** | 区域裁剪文本（滚动区域） |
+| `OLED_PrintfArea()` | 887 | 无 | **★★** | 区域裁剪格式化输出 |
+| `OLED_DrawRoundedRectangle()` | 1520 | 无 | **★★★** | UI 美化，低实现成本 |
+| `OLED_DrawTriangle()` | 1185 | 无 | **★** | 基础图元，但当前无需 |
+| `OLED_DrawEllipse()` | 1324 | 无 | **★** | 基础图元，但当前无需 |
+| `OLED_DrawArc()` | 1437 | 无 | — | 圆弧，暂不需要 |
+| `OLED_ShowImage()` | — | `draw_bitmap` | **★** | 已有等效功能 |
 
-| 函数 | 作用 | 当前项目对应 |
-|------|------|-------------|
-| `OLED_Init()` | 初始化 OLED | `ssd1306_init()` |
-| `OLED_Clear()` | 清屏 | `ssd1306_clear()` |
-| `OLED_Update()` | 刷新显示 | `ssd1306_update()` |
-| `OLED_DrawPixel(x,y,color)` | 画点 | `ssd1306_draw_pixel()` |
-| `OLED_DrawRectangle(x,y,w,h,fill)` | 画矩形 | `ssd1306_draw_rect()` |
-| `OLED_DrawLine(x0,y0,x1,y1)` | 画线 | `ssd1306_draw_line()` |
-| `OLED_DrawCircle(cx,cy,r,fill)` | 画圆 | `ssd1306_draw_circle()` |
-| `OLED_ShowChar(x,y,chr,size)` | 显示字符 | `ssd1306_draw_char()` |
-| `OLED_ShowString(x,y,str,size)` | 显示字符串 | `ssd1306_draw_string()` |
-| `OLED_ReverseArea(x,y,w,h)` | 区域反色 | 新增实现 |
-| `OLED_ClearArea(x,y,w,h)` | 区域清空 | 新增实现 |
-| `OLED_ShowImageArea(...)` | 显示图片 | `ssd1306_draw_bitmap()` |
-| `OLED_Printf(x,y,font,fmt,...)` | 格式化输出 | `ssd1306_draw_string()` |
-| `OLED_PrintfMixArea(...)` | 区域格式化输出 | 新增实现 |
-| `OLED_ShowFloatNum(x,y,num,font)` | 显示浮点数 | `sprintf`+`draw_string` |
-| `OLED_DrawRoundedRectangle(...)` | 圆角矩形 | 新增实现 |
-| `OLED_SetColorMode(mode)` | 设置颜色模式 | framebuf 取反 |
-| `OLED_Brightness(val)` | 设置亮度 | `ssd1306` command |
+### B. 字库 (Software_Driver/OLED_Fonts.h)
 
-**移植要点：**
+| 内容 | 当前项目 | 吸收？ | 理由 |
+|------|---------|--------|------|
+| `F6x8` | 已有 `font_6x8.c` | — | 已共享 |
+| `F8x16` | 无 | **★★★** | LCD 可读性提升 2 倍 |
+| `F7x12` / `F10x20` | 无 | — | 非必需，暂缓 |
+| 中文字库 8x8~20x20 | 无 | — | 无需求，50KB+ Flash |
+
+### C. UI 引擎 (OLED_UI/OLED_UI.c)
+
+| 功能 | 当前项目 | 吸收？ | 理由 |
+|------|---------|--------|------|
+| `MenuPage`+`MenuItem` 结构 | 硬编码 switch-case | **★★** | 吸收设计思想，重写轻量版 |
+| `OLED_UI_CreateWindow()` | 无 | **★** | 弹窗暂时不需要 |
+| PID 动画 | 无 | — | 当前帧驱动动画已够用 |
+| 淡入淡出 | 无 | — | 非必需 |
+| 长按/连击宏 | 简单 tick 检测 | **★★** | 吸收到输入层 |
+
+### D. 输入层 (misc.h + OLED_UI_Driver.h)
+
+| 功能 | 当前项目 | 吸收？ | 理由 |
+|------|---------|--------|------|
+| `BTN_stat_t` 状态机 | 简单 `gpio_get_level` | **★★★** | 去抖动+长按+press/release |
+| `BtnTask()` | 无 | **★★** | 定时扫描模式 |
+
+---
+
+## 吸收优先级排序
+
+### P0 — 立即吸收（高价值，低工作量）
+
+```
+① display_printf()           ← LCD 已有 draw_stringf，OLED 需补充
+② display_show_num/float()   ← 新功能
+③ display_clear_area()       ← 局部清除
+④ display_reverse_area()     ← 选中效果
+⑤ display_draw_round_rect()  ← UI 美化
+⑥ font_8x16.c               ← 8×16 字库
+```
+
+### P1 — 逐步吸收（中等价值）
+
+```
+⑦ display_printf_area()      ← 区域裁剪
+⑧ display_reverse()          ← 全屏反色
+⑨ 轻量声明式菜单              ← 替换 switch-case
+⑩ BtnTask 状态机改进 input   ← 去抖动加强
+```
+
+### P2 — 可暂缓
+
+```
+⑪ display_draw_triangle/ellipse()
+⑫ 弹窗系统
+⑬ 图标资源
+```
+
+---
+
+## 分阶段实施计划
+
+### Phase 1 — API 扩展（1 周）
+
+目标：在 `display.h` 中增加 P0 函数，两个后端分别实现。
+
+**`display.h` 新增声明：**
 
 ```c
-// SSD1306 framebuf 格式: framebuf[page=0..7][x=0..127]
-// 每个 page 8 像素行
-// page = y / 8, bit = y % 8
+// ——— 格式化输出 ———
+void display_printf(uint8_t x, uint8_t y, const char *fmt, ...);
 
-// OLED_UI_Core 使用:
-//   OLED_WIDTH=128, OLED_HEIGHT=64
-//   颜色: 0=灭(黑色), 1=亮(白色)
-//   DARKMODE: 0=黑底白字, 1=白底黑字
+// ——— 类型数字 ———
+void display_show_num(uint8_t x, uint8_t y, uint32_t num, uint8_t len);
+void display_show_float(uint8_t x, uint8_t y, double num, uint8_t dec);
 
-// 关键适配函数:
-void OLED_ReverseArea(int16_t x, int16_t y, int16_t w, int16_t h) {
-    for (int16_t j = 0; j < h; j++)
-        for (int16_t i = 0; i < w; i++)
-            ssd1306_draw_pixel(x + i, y + j,
-                !ssd1306_read_pixel(x + i, y + j));
-                // 需要新增 ssd1306_read_pixel
-}
+// ——— 区域操作 ———
+void display_clear_area(uint8_t x, uint8_t y, uint8_t w, uint8_t h);
+void display_reverse_area(uint8_t x, uint8_t y, uint8_t w, uint8_t h);
 
-void OLED_ClearArea(int16_t x, int16_t y, int16_t w, int16_t h) {
-    for (int16_t j = 0; j < h; j++)
-        for (int16_t i = 0; i < w; i++)
-            ssd1306_draw_pixel(x + i, y + j, 0);
-}
+// ——— 扩展图元 ———
+void display_draw_round_rect(uint8_t x, uint8_t y, uint8_t w, uint8_t h, uint8_t r, uint8_t fill);
 ```
 
-### 步骤 3：硬件抽象适配 (`OLED_UI_Driver.c`)
+**后端映射：**
 
-OLED_UI_Core 需要以下硬件级功能：
+| 新函数 | OLED 后端 (ssd1306) | LCD 后端 (lcd_st7735) |
+|--------|---------------------|----------------------|
+| `display_printf` | vsnprintf → draw_char 循环 | 直接转发 `lcd_draw_stringf` |
+| `display_show_num` | sprintf → draw_string | sprintf → draw_string |
+| `display_clear_area` | for + draw_pixel(0) | lcd_fill_rect(white) |
+| `display_reverse_area` | for + read_pixel → write !pixel | lcd_fill_rect(white) + ... |
+| `display_draw_round_rect` | Bresenham 弧 + 直线段 | 同算法 + RGB565 |
 
-| 需求 | STM32 HAL | ESP32 ESP-IDF |
-|------|-----------|---------------|
-| 定时器中断 20ms | `HAL_TIM_Base_Start_IT(&htim1)` | `esp_timer_create()` + `esp_timer_start_periodic()` |
-| GPIO 按键读取 | `HAL_GPIO_ReadPin()` | `gpio_get_level()` |
-| 编码器 | `TIM_Encoder_Init()` | 使用 ADC 摇杆替代 |
-| 微秒级延迟 | `HAL_Delay()` | `vTaskDelay()` |
-
-**确认/返回按键映射：**
+**关键实现 — `ReverseArea` 需要 `ssd1306_read_pixel()`：**
 
 ```c
-// OLED_UI_Core 期望 4 个按键: Enter, Back, Up, Down
-// 当前项目只有 1 个按钮 (GPIO32) + 摇杆方向
-
-// 建议映射方案:
-//   Enter = 摇杆按键 (GPIO32) 短按
-//   Back  = 摇杆按键 (GPIO32) 长按 (>1000ms)
-//   Up    = 摇杆上推   (ADC CH6/7 < 1600)
-//   Down  = 摇杆下推   (ADC CH6/7 > 2400)
-
-// 在 OLED_UI_Driver.c 中实现:
-uint8_t Key_GetEnterStatus(void) { return !gpio_get_level(GPIO_NUM_32); }
-uint8_t Key_GetBackStatus(void)  { /* 长按检测 */ }
-uint8_t Key_GetUpStatus(void)    { return adc_raw < ADC_LO; }
-uint8_t Key_GetDownStatus(void)  { return adc_raw > ADC_HI; }
+// ssd1306.c 新增
+uint8_t ssd1306_read_pixel(uint8_t x, uint8_t y) {
+    if (x >= WIDTH || y >= HEIGHT) return 0;
+    return (framebuf[y/8][x] >> (y%8)) & 1;
+}
 ```
 
-### 步骤 4：菜单数据适配 (`OLED_UI_MenuData.c`)
+### Phase 2 — 字库扩展（0.5 周）
 
-OLED_UI_Core 的菜单数据与当前项目功能对齐：
+从 `OLED_Fonts.h` 移植 `F8x16` 字库：
+
+| 文件 | 内容 |
+|------|------|
+| `drivers/font_8x16.c` | 96 个 ASCII 字符 × 16 字节 = 1536 字节 |
+| `drivers/font_8x16.h` | `extern const uint8_t font8x16[][16]` |
+
+`display_draw_char/string` 增加字号参数：
 
 ```c
-// 当前项目菜单:
-//   Circle  → circle_test
-//   Button  → test_ui
-//   Display → display_test (6 demos)
-//   Settings → calibrate
-//   About   → about
+#define FONT_6X8   0
+#define FONT_8X16  1
 
-// 移植为 OLED_UI_Core 格式:
-MenuItem MainMenuItems[] = {
-    {.General_item_text = "Circle",
-     .General_callback = EnterCircleTest,
-     .General_SubMenuPage = NULL},
-    {.General_item_text = "Button",
-     .General_callback = EnterButtonTest,
-     .General_SubMenuPage = NULL},
-    {.General_item_text = "Display",
-     .General_callback = NULL,
-     .General_SubMenuPage = &DisplayMenuPage},
-    {.General_item_text = "Settings",
-     .General_callback = NULL,
-     .General_SubMenuPage = &SettingsMenuPage},
-    {.General_item_text = "About",
-     .General_callback = NULL,
-     .General_SubMenuPage = &AboutMenuPage},
-    {.General_item_text = NULL},  // 结束标记
-};
+void display_draw_char(uint8_t x, uint8_t y, char c, uint8_t size);
+void display_draw_string(uint8_t x, uint8_t y, const char *str, uint8_t size);
+
+// LCD 模式默认 FONT_8X16，OLED 模式默认 FONT_6X8
 ```
 
-### 步骤 5：显示测试接入
+### Phase 3 — 代码迁移（1 周）
 
-将当前 `tests/display_test.c` 的 6 种动画注册为 OLED_UI_Core 的回调函数或子页面。
+将既有 9 个文件中的 `snprintf+draw_string` 模式替换为 `display_printf`：
+
+| 文件 | 替换示例 |
+|------|---------|
+| `tests/display_test.c` | `snprintf(pct,...) + draw_string` → `display_printf(px,6,"%d%%",v)` |
+| `ui/about.c` | 逐行 draw_string → `display_printf(8,i,"%s",text)` |
+| `input/calibrate.c` | `snprintf + draw_string` → `display_printf(24,2,"Step %d/4",step+1)` |
+| `main.c` | FPS/CPU 格式化由 display_set_fps 处理 |
+
+### Phase 4 — 输入增强（1 周）
+
+从 `misc.h` 移植 `BTN_stat_t` 状态机改进 `input/input.c`：
 
 ```c
-// 方式 A: 作为回调函数 (推荐)
-void ShowSineWave(void) {
-    // 直接调用 draw_sine()
-    // 需要 OLED_UI_Core 提供 "全屏绘制模式"
-}
-
-// 方式 B: 作为窗口
-MenuWindow SineWaveWindow = {
-    .General_Width = 128,
-    .General_Height = 64,
-    .General_WindowType = WINDOW_RECTANGLE,
-    .General_ContinueTime = 60.0,  // 持续60帧
-};
+// 新结构替代简单 tick 检测
+typedef struct {
+    uint8_t is_pressing;
+    uint8_t is_debounced;
+    uint8_t is_long_pressing;
+    uint8_t press_event;
+    uint8_t long_press_event;
+    uint32_t press_start_tick;
+} btn_stat_t;
 ```
 
-### 步骤 6：中断与主循环集成
+收益：
+- 去除 `#define DEBOUNCE_MS 50` 硬编码
+- 长按检测从 ui.c 下放到 input 层
+- 支持 press/release 双边沿事件
 
-```c
-// OLED_UI_Core 要求:
-//   1. OLED_UI_InterruptHandler() 每 20ms 调用一次
-//   2. OLED_UI_MainLoop() 在主循环中调用
+---
 
-// 在 ESP32 上实现:
+## 不吸收的内容及理由
 
-// 6a. 定时器 (替代 STM32 TIM1)
-static void ui_timer_cb(void *arg) {
-    OLED_UI_InterruptHandler();
-}
+| 不吸收 | 理由 |
+|--------|------|
+| 完整 `OLED_UI.c` 框架 (1500+ lines) | 当前状态机 + 简单菜单更可维护 |
+| PID 动画 (`ChangeDistance` 等) | float 运算，Flash 占用 ~2KB，当前无需平滑动画 |
+| 窗口系统 (`OLED_UI_CreateWindow`) | 无弹窗需求，scene 模式已可覆盖 |
+| 中文字库 (12x12~20x20) | 50KB+ Flash，无显示需求 |
+| F7x12 / F10x20 字库 | 6x8 + 8x16 已覆盖 |
+| 磁贴布局 (TILES) | 当前列表菜单够用 |
+| 3D 立方体 (`DrawCube3D`) | 演示功能，无实际用途 |
+| 编码器支持 | 使用 ADC 摇杆替代 |
+| Icons (settings/wechat/alipay) | 好看但非必需，暂不引入 |
 
-void start_ui_timer(void) {
-    const esp_timer_create_args_t timer_args = {
-        .callback = ui_timer_cb,
-        .name = "ui_timer"
-    };
-    esp_timer_handle_t timer;
-    esp_timer_create(&timer_args, &timer);
-    esp_timer_start_periodic(timer, 20000);  // 20ms
-}
+---
 
-// 6b. 主循环
-void app_main(void) {
-    nvs_flash_init();
-    start_ui_timer();
-    OLED_UI_Init(&MainMenuPage);
+## 文件变更总览
 
-    while (1) {
-        OLED_UI_MainLoop();
-    }
-}
-```
+| 阶段 | 新建 | 修改 | 说明 |
+|------|------|------|------|
+| 1 | 0 | 5 | `display.h/c` 扩 API + `ssd1306.c` 加 `read_pixel` + `lcd_st7735.c` 适配 |
+| 2 | 2 | 3 | `font_8x16.c/h` 新建 + `display.h/c` 扩字号参数 + `display_layout.h` |
+| 3 | 0 | 9 | 逐个文件替换 `snprintf+draw_string` → `display_printf` |
+| 4 | 0 | 2 | `input.h/c` 改进按键状态机 |
+| 合计 | 2 | 19 | |
 
-### 步骤 7：CMakeLists.txt 更新
-
-```cmake
-idf_component_register(SRCS "main.c"
-    "OLED_UI_Core/OLED_UI_Launcher.c"
-    "OLED_UI_Core/OLED_UI/OLED_UI.c"
-    "OLED_UI_Core/OLED_UI/OLED_UI_MenuData.c"
-    "OLED_UI_Core/Driver/Hardware_Driver/OLED_UI_Driver.c"
-    "OLED_UI_Core/Driver/Hardware_Driver/OLED_driver.c"   # 适配版
-    "OLED_UI_Core/Driver/Software_Driver/OLED.c"           # 适配版
-    "OLED_UI_Core/Driver/Software_Driver/OLED_Fonts.c"
-    "OLED_UI_Core/Driver/Software_Driver/misc.c"
-    INCLUDE_DIRS "." "OLED_UI_Core" "OLED_UI_Core/OLED_UI"
-        "OLED_UI_Core/Driver/Hardware_Driver"
-        "OLED_UI_Core/Driver/Software_Driver"
-)
-```
-
-## 移植工作量评估
-
-| 模块 | 难度 | 估算 |
-|------|------|------|
-| 复制代码结构 | ★ | 10 分钟 |
-| `OLED_driver.c` 适配 | ★★★ | 2-4 小时 |
-| `OLED_UI_Driver.c` 按键适配 | ★★ | 1 小时 |
-| 定时器替换 (TIM→esp_timer) | ★ | 30 分钟 |
-| 编码器→摇杆重映射 | ★★★ | 2 小时 |
-| 菜单数据重构 | ★★★ | 2-3 小时 |
-| 显示测试注册 | ★ | 30 分钟 |
-| 总工作量 | | **8-11 小时** |
-
-## 潜在风险
-
-1. **内存**：OLED_UI_Core 使用 float/PID 运算，`ChangeFloatNum` 含 `fabs()`，Flash 占用约 15-20KB
-2. **堆栈**：`PrintMenuElements` 等函数含深层循环，建议 `main` task 堆栈 4096+
-3. **中文字体**：STM32 版含中文字库（12x12/16x16），Flash 占用较大（>50KB），可裁剪
-4. **framebuf**：OLED_UI_Core 的 `OLED_DisplayBuf` 格式需要与 `ssd1306.c` 的 `framebuf` 对齐，或直接复用当前 framebuffer
-5. **IDF 版本**：确保 `OLED_driver.c` 中的 I2C/SPI 操作使用 ESP-IDF API 而非 STM32 HAL
-
-## 建议移植策略
-
-```
-阶段 1 (3h): OLED_driver 适配
-  → 让 OLED_UI_Core 的绘图函数在 ESP32 上跑通
-  → 验证: 调用 OLED_Clear → OLED_DrawCircle → OLED_Update 能正常显示
-
-阶段 2 (2h): 按键/定时器适配
-  → 实现 OLED_UI_InterruptHandler 和按键读取
-  → 验证: 可以在菜单间导航
-
-阶段 3 (3h): 菜单数据对接
-  → 用 OLED_UI_Core 的格式重构当前菜单
-  → 验证: 所有功能（画圆/按键/校准/关于）可正常进入
-
-阶段 4 (2h): 整理与优化
-  → 接入 Display Test 动画
-  → 清理旧文件（ui.c/menu.c/about.c 等已不再需要）
-  → 验证: 完整功能回归测试
-```
+**工作量估算：3-4 周（兼职），可并行 Phase 2 + Phase 3。**

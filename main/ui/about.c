@@ -1,10 +1,12 @@
 #include "about.h"
-#include "ssd1306.h"
-#include "version.h"
+#include "display.h"
+#include "display_layout.h"
+#include "main.h"
 
-#define ABOUT_LINES  8
-#define ABOUT_VISIBLE 8
-
+/* ── 文字内容按显示模式区分 ── */
+#if defined(CONFIG_DISPLAY_OLED) && !defined(CONFIG_DISPLAY_LCD)
+/* OLED only */
+#define ABOUT_LINES    8
 static const char *about_text[] = {
     "== ESP32 OLED ==",
     "SSD1306 128x64",
@@ -15,6 +17,46 @@ static const char *about_text[] = {
     "Firmware " FW_VERSION_STR,
     "Scroll: Up/Down",
 };
+
+#elif defined(CONFIG_DISPLAY_LCD) && !defined(CONFIG_DISPLAY_OLED)
+/* LCD only */
+#define ABOUT_LINES    12
+static const char *about_text[] = {
+    "== ESP32 LCD ==",
+    "ST7735S 128x160",
+    "SPI 26MHz",
+    "Dual display",
+    "Joystick + Menu",
+    "Calibration",
+    "Circle / Button",
+    "Display test",
+    "Firmware " FW_VERSION_STR,
+    "MCU: ESP32-S3",
+    "Flash: 16MB",
+    "Scroll: Up/Down",
+};
+
+#else
+/* Dual display — use LCD content but limit rows to OLED content area */
+#define ABOUT_LINES    12
+static const char *about_text[] = {
+    "== ESP32 LCD ==",
+    "ST7735S 128x160",
+    "SPI 26MHz",
+    "Dual display",
+    "Joystick + Menu",
+    "Calibration",
+    "Circle / Button",
+    "Display test",
+    "Firmware " FW_VERSION_STR,
+    "MCU: ESP32-S3",
+    "Flash: 16MB",
+    "Scroll: Up/Down",
+};
+#endif
+
+/* ── 可见行数 = 受 OLED 内容区页面数限制 ── */
+#define ABOUT_VISIBLE   (CONTENT_H)             /* OLED:6, LCD:18 */
 
 static int scroll_y = 0;
 
@@ -37,9 +79,13 @@ void about_scroll(int8_t dir)
 
 void about_draw(void)
 {
-    ssd1306_clear();
+    display_clear();
+    uint8_t max_page = CONTENT_Y + CONTENT_H;   /* OLED:8, LCD:20 */
     for (int i = 0; i < ABOUT_VISIBLE && (scroll_y + i) < ABOUT_LINES; i++) {
-        ssd1306_draw_string(8, i, about_text[scroll_y + i]);
+        uint8_t py = ABOUT_TEXT_Y(i);
+        if (py < max_page) {
+            display_draw_string(8, py, about_text[scroll_y + i]);
+        }
     }
-    ssd1306_update();
+    display_update();
 }

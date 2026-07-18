@@ -1,5 +1,6 @@
 #include "ui_common.h"
-#include "ssd1306.h"
+#include "display.h"
+#include "display_layout.h"
 
 const uint8_t pos[5][2] = {
     { CX,       CY - GAP },
@@ -19,7 +20,7 @@ void draw_arrow(uint8_t cx, uint8_t cy, uint8_t dir, uint8_t fill)
         case 3: x[0]=cx+s; y[0]=cy;   x[1]=cx-s; y[1]=cy-s; x[2]=cx-s; y[2]=cy+s; break;
     }
     for (int i = 0; i < 3; i++)
-        ssd1306_draw_line(x[i], y[i], x[(i+1)%3], y[(i+1)%3]);
+        display_draw_line(x[i], y[i], x[(i+1)%3], y[(i+1)%3]);
 
     if (fill) {
         int mn = y[0], mx = y[0];
@@ -38,7 +39,7 @@ void draw_arrow(uint8_t cx, uint8_t cy, uint8_t dir, uint8_t fill)
                     if (xi > xr) xr = xi;
                 }
             }
-            if (xl <= xr) ssd1306_draw_hline(xl, yy, xr - xl + 1);
+            if (xl <= xr) display_draw_hline(xl, yy, xr - xl + 1);
         }
     }
 }

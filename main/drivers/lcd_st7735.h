@@ -28,6 +28,7 @@
 
 void lcd_init(void);
 void lcd_clear(uint16_t color);
+void lcd_fill(uint16_t color);
 void lcd_update(void);
 void lcd_draw_pixel(uint8_t x, uint8_t y, uint16_t color);
 void lcd_set_window(uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1);
@@ -37,8 +38,12 @@ void lcd_draw_hline(uint8_t x, uint8_t y, uint8_t w, uint16_t color);
 void lcd_draw_vline(uint8_t x, uint8_t y, uint8_t h, uint16_t color);
 void lcd_draw_line(uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1, uint16_t color);
 void lcd_draw_circle(uint8_t cx, uint8_t cy, uint8_t r, uint16_t color, uint8_t fill);
+void lcd_draw_bitmap(uint8_t x, uint8_t y, uint8_t w, uint8_t h, const uint8_t *data, uint16_t fg, uint16_t bg);
 void lcd_draw_char(uint8_t x, uint8_t y, char c, uint16_t fg, uint16_t bg);
 void lcd_draw_string(uint8_t x, uint8_t y, const char *str, uint16_t fg, uint16_t bg);
 void lcd_draw_stringf(uint8_t x, uint8_t y, uint16_t fg, uint16_t bg, const char *fmt, ...);
+void lcd_set_fps(uint8_t fps);
+uint32_t lcd_get_frames(void);
+void lcd_update_area(uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1);
 
 #endif

@@ -2,12 +2,9 @@
 #define UI_COMMON_H
 
 #include <stdint.h>
+#include "display_layout.h"
 
-#define CX         64
-#define CY         40
-#define GAP        16
 #define ARROW_SZ   4
-#define CIRCLE_R   5
 
 #define MAP_UP     0
 #define MAP_DOWN   1

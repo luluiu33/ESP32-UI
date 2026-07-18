@@ -84,29 +84,35 @@ input_event_t input_read(void)
 
     int lr_raw = swap_xy ? ay : ax;
     int ud_raw = swap_xy ? ax : ay;
-    int lr_lo  = invert_x ? ADC_HI : ADC_LO;
-    int lr_hi  = invert_x ? ADC_LO : ADC_HI;
-    int ud_lo  = invert_y ? ADC_HI : ADC_LO;
-    int ud_hi  = invert_y ? ADC_LO : ADC_HI;
 
     switch (js) {
         case JS_IDLE:
-            if (lr_raw < lr_lo)           { js = JS_LEFT;  ev = EV_LEFT; }
-            else if (lr_raw > lr_hi)      { js = JS_RIGHT; ev = EV_RIGHT; }
-            else if (ud_raw < ud_lo)      { js = JS_UP;    ev = EV_UP; }
-            else if (ud_raw > ud_hi)      { js = JS_DOWN;  ev = EV_DOWN; }
+            if (invert_x) {
+                if (lr_raw > ADC_HI)           { js = JS_LEFT;  ev = EV_LEFT; }
+                else if (lr_raw < ADC_LO)      { js = JS_RIGHT; ev = EV_RIGHT; }
+            } else {
+                if (lr_raw < ADC_LO)           { js = JS_LEFT;  ev = EV_LEFT; }
+                else if (lr_raw > ADC_HI)      { js = JS_RIGHT; ev = EV_RIGHT; }
+            }
+            if (invert_y) {
+                if (ud_raw > ADC_HI)           { js = JS_UP;    ev = EV_UP; }
+                else if (ud_raw < ADC_LO)      { js = JS_DOWN;  ev = EV_DOWN; }
+            } else {
+                if (ud_raw < ADC_LO)           { js = JS_UP;    ev = EV_UP; }
+                else if (ud_raw > ADC_HI)      { js = JS_DOWN;  ev = EV_DOWN; }
+            }
             break;
         case JS_LEFT:
-            if (lr_raw >= lr_lo) js = JS_IDLE;
+            if (invert_x ? (lr_raw <= ADC_HI) : (lr_raw >= ADC_LO)) js = JS_IDLE;
             break;
         case JS_RIGHT:
-            if (lr_raw <= lr_hi) js = JS_IDLE;
+            if (invert_x ? (lr_raw >= ADC_LO) : (lr_raw <= ADC_HI)) js = JS_IDLE;
             break;
         case JS_UP:
-            if (ud_raw >= ud_lo) js = JS_IDLE;
+            if (invert_y ? (ud_raw <= ADC_HI) : (ud_raw >= ADC_LO)) js = JS_IDLE;
             break;
         case JS_DOWN:
-            if (ud_raw <= ud_hi) js = JS_IDLE;
+            if (invert_y ? (ud_raw >= ADC_LO) : (ud_raw <= ADC_HI)) js = JS_IDLE;
             break;
     }
 
@@ -119,16 +125,22 @@ joy_state_t input_get_state(void)
     int ay = adc1_get_raw(JOY_Y);
     int lr_raw = swap_xy ? ay : ax;
     int ud_raw = swap_xy ? ax : ay;
-    int lr_lo  = invert_x ? ADC_HI : ADC_LO;
-    int lr_hi  = invert_x ? ADC_LO : ADC_HI;
-    int ud_lo  = invert_y ? ADC_HI : ADC_LO;
-    int ud_hi  = invert_y ? ADC_LO : ADC_HI;
 
     joy_state_t s;
-    s.left   = (lr_raw < lr_lo);
-    s.right  = (lr_raw > lr_hi);
-    s.up     = (ud_raw < ud_lo);
-    s.down   = (ud_raw > ud_hi);
+    if (invert_x) {
+        s.left   = (lr_raw > ADC_HI);
+        s.right  = (lr_raw < ADC_LO);
+    } else {
+        s.left   = (lr_raw < ADC_LO);
+        s.right  = (lr_raw > ADC_HI);
+    }
+    if (invert_y) {
+        s.up     = (ud_raw > ADC_HI);
+        s.down   = (ud_raw < ADC_LO);
+    } else {
+        s.up     = (ud_raw < ADC_LO);
+        s.down   = (ud_raw > ADC_HI);
+    }
     s.center = !gpio_get_level(BTN_GPIO);
     return s;
 }

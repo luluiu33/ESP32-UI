@@ -5,11 +5,10 @@
 #include "esp_timer.h"
 #include "input.h"
 #include "ui.h"
-#include "ssd1306.h"
+#include "display.h"
+#include "display_layout.h"
 
 #define LED_GPIO  GPIO_NUM_2
-
-#define FPS_SAMPLE_COUNT  20
 
 void app_main(void)
 {
@@ -41,16 +40,16 @@ void app_main(void)
         if (sample >= 50) {
             int64_t now = esp_timer_get_time();
             int elapsed_ms = (int)((now - last) / 1000);
-            int fps = ssd1306_get_frames() * 1000 / (elapsed_ms ? elapsed_ms : 1);
             int cpu = (elapsed_ms > 0) ? (int)((int64_t)work_sum * 100 / (elapsed_ms * 1000)) : 0;
-            ssd1306_set_fps(fps > 99 ? 99 : (uint8_t)fps);
-            printf("CPU:%d%%  FPS:%d\n", cpu, fps);
+            display_update_fps(elapsed_ms);
+            printf("CPU:%d%%\n", cpu);
             last = now;
             work_sum = 0;
             sample = 0;
         }
 
-        /* fixed 16ms frame period */
+        display_update_title();
+
         int sleep_us = 16000 - (int)(esp_timer_get_time() - t0);
         if (sleep_us > 10000)
             vTaskDelay(1);

@@ -1,15 +1,14 @@
 #include "menu.h"
-#include "ssd1306.h"
+#include "display.h"
+#include "display_layout.h"
 #include <string.h>
 
-#define MENU_COUNT   5
-#define MENU_VISIBLE 3
+#define MENU_COUNT   4
 
 static const char *items[MENU_COUNT] = {
     "Circle",
     "Button",
     "Display",
-    "Settings",
     "About"
 };
 
@@ -62,15 +61,14 @@ int menu_is_dirty(void)
 
 void menu_draw(void)
 {
-    ssd1306_clear();
-    ssd1306_draw_string(28, 0, "Main Menu");
+    display_clear();
     for (int i = 0; i < MENU_VISIBLE && (scroll_y + i) < MENU_COUNT; i++) {
         int idx = scroll_y + i;
         char buf[20];
         buf[0] = (idx == focus) ? '>' : ' ';
         buf[1] = ' ';
         strcpy(buf + 2, items[idx]);
-        ssd1306_draw_string(20, 3 + i * 2, buf);
+        display_draw_string(20, MENU_ITEM_Y(i), buf);
     }
-    ssd1306_update();
+    display_update();
 }

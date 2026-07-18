@@ -1,14 +1,18 @@
 #include "display_test.h"
-#include "ssd1306.h"
+#include "display.h"
+#include "display_layout.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <string.h>
 #include <math.h>
 
-#define Y_MIN 16
-#define Y_MAX 63
+#define Y_MIN TEST_Y_MIN
+#define Y_MAX TEST_Y_MAX
 
 static int active_test = -1;
+static const char *test_names[DISP_TEST_COUNT] = {
+    "Sine Wave", "Bounce Ball", "Progress", "Shapes", "Charset", "Marquee"
+};
 
 /* ================================================================
  * 1. Sine Wave - scrolling waveform
@@ -21,16 +25,15 @@ static float sine_phase = 0.0f;
 
 static void draw_sine(void)
 {
-    ssd1306_clear();
-    ssd1306_draw_string(20, 0, "Sine Wave");
+    display_clear();
     int py = (int)(SINE_CY + SINE_AMP * sinf(sine_phase));
     for (int x = 1; x < 128; x++) {
         float rad = sine_phase + x * SINE_FREQ;
         int y = (int)(SINE_CY + SINE_AMP * sinf(rad));
-        ssd1306_draw_line(x - 1, py, x, y);
+        display_draw_line(x - 1, py, x, y);
         py = y;
     }
-    ssd1306_update();
+    display_update();
     sine_phase += SINE_FREQ;
     if (sine_phase > 3.14159265f * 2.0f) sine_phase -= 3.14159265f * 2.0f;
 }
@@ -55,10 +58,9 @@ static void draw_ball(void)
     ball_prev_x = ball_x;
     ball_prev_y = ball_y;
 
-    ssd1306_clear();
-    ssd1306_draw_string(16, 0, "Bounce Ball");
-    ssd1306_draw_circle(ball_x, ball_y, 3, 1);
-    ssd1306_update();
+    display_clear();
+    display_draw_circle(ball_x, ball_y, 3, 1);
+    display_update();
 }
 
 static void ball_update(void)
@@ -77,19 +79,18 @@ static int pb_dir = 1;
 
 static void draw_progress(void)
 {
-    ssd1306_clear();
-    ssd1306_draw_string(24, 0, "Progress");
-    ssd1306_draw_rect(4, 28, 120, 14, 0);
+    display_clear();
+    display_draw_rect(4, 28, 120, 14, 0);
     int fw = (pb_value * 116) / 100;
-    if (fw > 0) ssd1306_draw_rect(6, 30, fw, 10, 1);
+    if (fw > 0) display_draw_rect(6, 30, fw, 10, 1);
     char pct[8];
     int v = pb_value;
     if (v >= 100) { pct[0] = '1'; pct[1] = '0'; pct[2] = '0'; pct[3] = '%'; pct[4] = 0; }
     else if (v >= 10) { pct[0] = '0' + v / 10; pct[1] = '0' + v % 10; pct[2] = '%'; pct[3] = 0; }
     else { pct[0] = '0' + v; pct[1] = '%'; pct[2] = 0; }
     int px = 64 - (strlen(pct) * 6);
-    ssd1306_draw_string(px, 6, pct);
-    ssd1306_update();
+    display_draw_string(px, TEST_TITLE_Y + 6, pct);
+    display_update();
 }
 
 static void progress_update(void)
@@ -104,17 +105,16 @@ static void progress_update(void)
  * ================================================================ */
 static void draw_shapes(void)
 {
-    ssd1306_clear();
-    ssd1306_draw_string(32, 0, "Shapes");
-    ssd1306_draw_rect(2, 18, 40, 20, 0);
-    ssd1306_draw_rect(50, 18, 30, 20, 1);
-    ssd1306_draw_circle(100, 28, 10, 0);
-    ssd1306_draw_circle(100, 28, 4, 1);
-    ssd1306_draw_line(2, 46, 50, 62);
-    ssd1306_draw_line(50, 46, 2, 62);
-    ssd1306_draw_rect(70, 46, 56, 16, 1);
-    ssd1306_draw_rect(74, 48, 48, 12, 0);
-    ssd1306_update();
+    display_clear();
+    display_draw_rect(2, 18, 40, 20, 0);
+    display_draw_rect(50, 18, 30, 20, 1);
+    display_draw_circle(100, 28, 10, 0);
+    display_draw_circle(100, 28, 4, 1);
+    display_draw_line(2, 46, 50, 62);
+    display_draw_line(50, 46, 2, 62);
+    display_draw_rect(70, 46, 56, 16, 1);
+    display_draw_rect(74, 48, 48, 12, 0);
+    display_update();
 }
 
 /* ================================================================
@@ -122,19 +122,19 @@ static void draw_shapes(void)
  * ================================================================ */
 static void draw_charset(void)
 {
-    ssd1306_clear();
-    ssd1306_draw_string(28, 0, "Charset");
-    ssd1306_draw_string(10, 2, "ASCII 32~126");
+    display_clear();
+    display_draw_string(10, TEST_TITLE_Y, "ASCII 32~126");
     int idx = 32;
-    for (int row = 3; row < 8; row++) {
+    int max_row = CONTENT_Y + CONTENT_H;
+    for (int row = TEST_TITLE_Y + 1; row < TEST_TITLE_Y + 6 && row < max_row; row++) {
         for (int col = 0; col < 21; col++) {
             if (idx > 126) break;
-            ssd1306_draw_char(col * 6, row, (char)idx);
+            display_draw_char(col * 6, row, (char)idx);
             idx++;
         }
         if (idx > 126) break;
     }
-    ssd1306_update();
+    display_update();
 }
 
 /* ================================================================
@@ -153,15 +153,17 @@ static void marquee_step(void)
 
 static void draw_marquee(void)
 {
-    ssd1306_clear();
-    ssd1306_draw_string(24, 0, "Marquee");
+    display_clear();
     for (int i = 0; i < 36; i++) {
         int px = mx - mdx * i;
         int py = my - mdy * i;
-        if (px >= 0 && px < 128 && py >= Y_MIN && py <= Y_MAX)
-            ssd1306_draw_pixel(px, py, 1);
+        if (px >= 0 && px < 128 && py >= Y_MIN && py <= Y_MAX) {
+            display_draw_pixel(px, py);
+            if (mdx) { display_draw_pixel(px, py - 1); display_draw_pixel(px, py + 1); }
+            if (mdy) { display_draw_pixel(px - 1, py); display_draw_pixel(px + 1, py); }
+        }
     }
-    ssd1306_update();
+    display_update();
 }
 
 /* ================================================================
@@ -170,6 +172,8 @@ static void draw_marquee(void)
 void disp_test_enter(int index)
 {
     active_test = index;
+    if (index >= 0 && index < DISP_TEST_COUNT)
+        display_set_title(test_names[index]);
     switch (index) {
     case 0: sine_phase = 0.0f; break;
     case 1: ball_init(); break;

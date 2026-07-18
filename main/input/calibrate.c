@@ -1,7 +1,8 @@
 #include "calibrate.h"
 #include "input.h"
 #include "ui_common.h"
-#include "ssd1306.h"
+#include "display.h"
+#include "display_layout.h"
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -26,19 +27,19 @@ void cal_draw(void)
 {
     char buf[20];
     char title[12];
-    ssd1306_clear();
+    display_clear();
 
     snprintf(title, sizeof(title), "Cal %s", names[step]);
-    ssd1306_draw_string(28, 0, title);
+    display_draw_string(28, CAL_TITLE_Y, title);
     snprintf(buf, sizeof(buf), "Step %d/4", step + 1);
-    ssd1306_draw_string(24, 2, buf);
+    display_draw_string(24, CAL_STEP_Y, buf);
 
-    draw_arrow(64, 40, step, 1);
+    draw_arrow(CAL_ARROW_CX, CAL_ARROW_CY, step, 1);
 
     snprintf(buf, sizeof(buf), "[%s]", names[step]);
-    ssd1306_draw_string(24, 6, buf);
+    display_draw_string(24, CAL_LABEL_Y, buf);
 
-    ssd1306_update();
+    display_update();
 }
 
 void cal_cancel(void)
