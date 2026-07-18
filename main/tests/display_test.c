@@ -1,0 +1,204 @@
+#include "display_test.h"
+#include "ssd1306.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include <string.h>
+#include <math.h>
+
+#define Y_MIN 16
+#define Y_MAX 63
+
+static int active_test = -1;
+
+/* ================================================================
+ * 1. Sine Wave - scrolling waveform
+ * ================================================================ */
+#define SINE_AMP  18.0f
+#define SINE_CY   36.0f
+#define SINE_FREQ (3.14159265f * 2.0f / 32.0f)
+
+static float sine_phase = 0.0f;
+
+static void draw_sine(void)
+{
+    ssd1306_clear();
+    ssd1306_draw_string(20, 0, "Sine Wave");
+    int py = (int)(SINE_CY + SINE_AMP * sinf(sine_phase));
+    for (int x = 1; x < 128; x++) {
+        float rad = sine_phase + x * SINE_FREQ;
+        int y = (int)(SINE_CY + SINE_AMP * sinf(rad));
+        ssd1306_draw_line(x - 1, py, x, y);
+        py = y;
+    }
+    ssd1306_update();
+    sine_phase += SINE_FREQ;
+    if (sine_phase > 3.14159265f * 2.0f) sine_phase -= 3.14159265f * 2.0f;
+}
+
+/* ================================================================
+ * 2. Bouncing Ball - physics animation
+ * ================================================================ */
+static int ball_x, ball_y;
+static int ball_vx, ball_vy;
+static int ball_prev_x, ball_prev_y;
+
+static void ball_init(void)
+{
+    ball_x = 64; ball_y = 40;
+    ball_vx = 3; ball_vy = 2;
+    ball_prev_x = -1; ball_prev_y = -1;
+}
+
+static void draw_ball(void)
+{
+    if (ball_x == ball_prev_x && ball_y == ball_prev_y) return;
+    ball_prev_x = ball_x;
+    ball_prev_y = ball_y;
+
+    ssd1306_clear();
+    ssd1306_draw_string(16, 0, "Bounce Ball");
+    ssd1306_draw_circle(ball_x, ball_y, 3, 1);
+    ssd1306_update();
+}
+
+static void ball_update(void)
+{
+    ball_x += ball_vx;
+    ball_y += ball_vy;
+    if (ball_x <= 3 || ball_x >= 124) { ball_vx = -ball_vx; ball_x += ball_vx; }
+    if (ball_y <= 3 + Y_MIN || ball_y >= 60)  { ball_vy = -ball_vy; ball_y += ball_vy; }
+}
+
+/* ================================================================
+ * 3. Progress Bar - 0->100% fill
+ * ================================================================ */
+static int pb_value = 0;
+static int pb_dir = 1;
+
+static void draw_progress(void)
+{
+    ssd1306_clear();
+    ssd1306_draw_string(24, 0, "Progress");
+    ssd1306_draw_rect(4, 28, 120, 14, 0);
+    int fw = (pb_value * 116) / 100;
+    if (fw > 0) ssd1306_draw_rect(6, 30, fw, 10, 1);
+    char pct[8];
+    int v = pb_value;
+    if (v >= 100) { pct[0] = '1'; pct[1] = '0'; pct[2] = '0'; pct[3] = '%'; pct[4] = 0; }
+    else if (v >= 10) { pct[0] = '0' + v / 10; pct[1] = '0' + v % 10; pct[2] = '%'; pct[3] = 0; }
+    else { pct[0] = '0' + v; pct[1] = '%'; pct[2] = 0; }
+    int px = 64 - (strlen(pct) * 6);
+    ssd1306_draw_string(px, 6, pct);
+    ssd1306_update();
+}
+
+static void progress_update(void)
+{
+    pb_value += pb_dir;
+    if (pb_value >= 100) { pb_value = 100; pb_dir = -1; }
+    if (pb_value <= 0)   { pb_value = 0;   pb_dir =  1; }
+}
+
+/* ================================================================
+ * 4. Geometric Shapes - static composition
+ * ================================================================ */
+static void draw_shapes(void)
+{
+    ssd1306_clear();
+    ssd1306_draw_string(32, 0, "Shapes");
+    ssd1306_draw_rect(2, 18, 40, 20, 0);
+    ssd1306_draw_rect(50, 18, 30, 20, 1);
+    ssd1306_draw_circle(100, 28, 10, 0);
+    ssd1306_draw_circle(100, 28, 4, 1);
+    ssd1306_draw_line(2, 46, 50, 62);
+    ssd1306_draw_line(50, 46, 2, 62);
+    ssd1306_draw_rect(70, 46, 56, 16, 1);
+    ssd1306_draw_rect(74, 48, 48, 12, 0);
+    ssd1306_update();
+}
+
+/* ================================================================
+ * 5. Character Set - all printable ASCII
+ * ================================================================ */
+static void draw_charset(void)
+{
+    ssd1306_clear();
+    ssd1306_draw_string(28, 0, "Charset");
+    ssd1306_draw_string(10, 2, "ASCII 32~126");
+    int idx = 32;
+    for (int row = 3; row < 8; row++) {
+        for (int col = 0; col < 21; col++) {
+            if (idx > 126) break;
+            ssd1306_draw_char(col * 6, row, (char)idx);
+            idx++;
+        }
+        if (idx > 126) break;
+    }
+    ssd1306_update();
+}
+
+/* ================================================================
+ * 6. Marquee - border crawling dot
+ * ================================================================ */
+static int mx, my, mdx, mdy;
+
+static void marquee_step(void)
+{
+    if (mx == 126 && my == Y_MIN && mdx == 1)  { mx = 127; mdx = 0;  mdy = 1; }
+    else if (mx == 127 && my == Y_MAX && mdy == 1) { mx = 127; mdx = -1; mdy = 0; }
+    else if (mx == 1  && my == Y_MAX && mdx == -1)  { mx = 0;   mdx = 0;  mdy = -1; }
+    else if (mx == 0  && my == Y_MIN && mdy == -1)  { mx = 0;   mdx = 1;  mdy = 0; }
+    else { mx += mdx; my += mdy; }
+}
+
+static void draw_marquee(void)
+{
+    ssd1306_clear();
+    ssd1306_draw_string(24, 0, "Marquee");
+    for (int i = 0; i < 36; i++) {
+        int px = mx - mdx * i;
+        int py = my - mdy * i;
+        if (px >= 0 && px < 128 && py >= Y_MIN && py <= Y_MAX)
+            ssd1306_draw_pixel(px, py, 1);
+    }
+    ssd1306_update();
+}
+
+/* ================================================================
+ * Public API
+ * ================================================================ */
+void disp_test_enter(int index)
+{
+    active_test = index;
+    switch (index) {
+    case 0: sine_phase = 0.0f; break;
+    case 1: ball_init(); break;
+    case 2: pb_value = 0; pb_dir = 1; break;
+    case 5: mx = 0; my = Y_MIN; mdx = 1; mdy = 0; break;
+    default: break;
+    }
+}
+
+void disp_test_next(void)
+{
+    disp_test_enter((active_test + 1) % DISP_TEST_COUNT);
+}
+
+void disp_test_prev(void)
+{
+    disp_test_enter((active_test - 1 + DISP_TEST_COUNT) % DISP_TEST_COUNT);
+}
+
+void disp_test_draw(joy_state_t *js)
+{
+    (void)js;
+    if (active_test < 0) return;
+    switch (active_test) {
+    case 0: draw_sine(); break;
+    case 1: ball_update(); draw_ball(); break;
+    case 2: progress_update(); draw_progress(); break;
+    case 3: draw_shapes(); break;
+    case 4: draw_charset(); break;
+    case 5: marquee_step(); draw_marquee(); break;
+    }
+}
