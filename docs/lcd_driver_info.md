@@ -22,10 +22,10 @@
 |----------|------|-----------|
 | SCL | SPI 时钟 | GPIO18 |
 | SDA | SPI MOSI | GPIO23 |
-| RES | 复位 (低电平复位) | GPIO4 |
-| DC | 数据/命令选择 (高=数据) | GPIO2 |
+| RES | 复位 (低电平复位) | GPIO22 |
+| DC | 数据/命令选择 (高=数据) | GPIO21 |
 | CS | 片选 (低电平选中) | GPIO5 |
-| BLK | 背光 | GPIO22 |
+| BLK | 背光 | 未使用（无 PWM 控制） |
 | VCC | 电源 | 3.3V / 5V |
 | GND | 地 | GND |
 

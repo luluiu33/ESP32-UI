@@ -83,13 +83,7 @@ static void draw_progress(void)
     display_draw_rect(4, 28, 120, 14, 0);
     int fw = (pb_value * 116) / 100;
     if (fw > 0) display_draw_rect(6, 30, fw, 10, 1);
-    char pct[8];
-    int v = pb_value;
-    if (v >= 100) { pct[0] = '1'; pct[1] = '0'; pct[2] = '0'; pct[3] = '%'; pct[4] = 0; }
-    else if (v >= 10) { pct[0] = '0' + v / 10; pct[1] = '0' + v % 10; pct[2] = '%'; pct[3] = 0; }
-    else { pct[0] = '0' + v; pct[1] = '%'; pct[2] = 0; }
-    int px = 64 - (strlen(pct) * 6);
-    display_draw_string(px, TEST_TITLE_Y + 6, pct);
+    display_printf(64 - 4 * 6, TEST_TITLE_Y + 6, "%d%%", pb_value);
     display_update();
 }
 

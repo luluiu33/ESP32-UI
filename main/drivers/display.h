@@ -4,6 +4,8 @@
 #include <stdint.h>
 
 void display_init(void);
+void display_printf(uint8_t x, uint8_t y, const char *fmt, ...);
+void display_draw_round_rect(uint8_t x, uint8_t y, uint8_t w, uint8_t h, uint8_t r, uint8_t fill);
 void display_clear(void);
 void display_update(void);
 void display_draw_pixel(uint8_t x, uint8_t y);

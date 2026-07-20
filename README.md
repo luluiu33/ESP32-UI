@@ -20,9 +20,8 @@
 | MOSI | GPIO23    |
 | SCK  | GPIO18    |
 | CS   | GPIO5     |
-| DC   | GPIO2     |
-| RST  | GPIO4     |
-| BL   | GPIO22 (PWM) |
+| DC   | GPIO21    |
+| RST  | GPIO22    |
 | VCC  | 3.3V      |
 | GND  | GND       |
 
@@ -42,7 +41,7 @@
 
 | LED | ESP32 GPIO |
 |-----|-----------|
-| 阳极 | GPIO2（与 LCD DC 共用） |
+| 阳极 | GPIO2 |
 | 阴极 | GND |
 
 ## 项目结构
@@ -52,7 +51,7 @@
 ├── main/
 │   ├── CMakeLists.txt
 │   ├── main.c                  # 入口：初始化，主循环轮询输入，FPS/CPU 统计
-│   ├── Kconfig.projbuild       # Display type 选择 (OLED / LCD)
+│   ├── main.h                  # 版本号 + 显示屏选择宏 (CONFIG_DISPLAY_OLED/LCD)
 │   ├── drivers/
 │   │   ├── display.h / .c      # 统一 display API 抽象层（编译时转发）
 │   │   ├── display_layout.h    # OLED/LCD 布局宏（页面索引 + 像素坐标）
@@ -64,23 +63,24 @@
 │   │   └── calibrate.h / .c    # 4步校准 UI + NVS 持久化
 │   ├── ui/
 │   │   ├── ui.h / .c           # 模式状态机 (MENU/CIRCLE/TEST/DISP_TEST/CAL/ABOUT)
-│   │   ├── menu.h / .c         # 滚动菜单 (5项, 3可见)
+│   │   ├── menu.h / .c         # 滚动菜单 (4项, 3可见)
 │   │   ├── about.h / .c        # 关于页 (可滚动文本)
 │   │   └── ui_common.h / .c    # 共享绘图原语 + 箭头绘制
 │   └── tests/
 │       ├── test_ui.h / .c      # 十字箭头方向测试
 │       ├── circle_test.h / .c  # 圆轨迹追踪 + 摇杆点
 │       └── display_test.h / .c # 动画演示集 (正弦波/弹球/进度条/图形/字库/跑马灯)
-└── docs/
-    └── esp32-wroom-32-datasheet.md
-    └── lcd_integration_plan.md
-    └── project_design.md
+├── docs/
+│   ├── esp32-wroom-32-datasheet.md
+│   ├── lcd_driver_info.md
+│   ├── porting_oled_ui_core.md
+│   └── project_design.md
 ```
 
 ## 构建与烧录
 
 ```bash
-idf.py menuconfig          # → Display type → 选择 OLED (SSD1306) 或 LCD (ST7735)
+# 编辑 main/main.h，注释/取消注释 CONFIG_DISPLAY_OLED / CONFIG_DISPLAY_LCD 选择屏幕
 idf.py build
 idf.py -p COMx -b 1500000 flash
 idf.py -p COMx monitor    # 串口输出 CPU 占用率
@@ -90,13 +90,13 @@ idf.py -p COMx monitor    # 串口输出 CPU 占用率
 
 ### 统一抽象层
 所有 UI/测试代码通过 `display_*()` API 显示，不直接操作屏幕硬件。
-编译时由 Kconfig（`CONFIG_DISPLAY_OLED` / `CONFIG_DISPLAY_LCD`）选择后端。
+编译时由 `main.h` 中的宏定义（`CONFIG_DISPLAY_OLED` / `CONFIG_DISPLAY_LCD`）选择后端。
 布局宏（`display_layout.h`）自动适配两种分辨率。
 
 ### OLED (SSD1306) — 128×64
-- **接口**：硬件 I2C, 400kHz
+- **接口**：硬件 I2C, 1MHz
 - **字体**：6×8 像素，8 页面 (0~7)
-- **布局**：标题 (page 0) + 内容 (page 1~7)
+- **布局**：标题 (page 0~1, 16px) + 内容 (page 2~7)
 
 ### LCD (ST7735) — 128×160
 - **接口**：硬件 SPI
@@ -107,7 +107,7 @@ idf.py -p COMx monitor    # 串口输出 CPU 占用率
 ## 功能
 
 ### 菜单系统
-- 5 个菜单项：Circle / Button / Display / Settings / About
+- 4 个菜单项：Circle / Button / Display / About
 - 滚动显示（3 项可见），摇杆上下切换，按下进入
 
 ### 测试模式
@@ -115,7 +115,8 @@ idf.py -p COMx monitor    # 串口输出 CPU 占用率
 - **Button**：十字箭头方向测试，按下点亮中心圆
 - **Display**：6 种动画演示（正弦波 / 弹球 / 进度条 / 图形 / 字库 / 跑马灯）
 
-### 校准 (Settings)
+### 校准
+- 菜单模式长按中心按钮 >500ms 进入校准
 - 4 步校准 (UP / DOWN / LEFT / RIGHT)，每步按住 300ms
 - 校准数据以 blob 形式写入 NVS (`cal/map`)
 - 上电自动加载
@@ -124,7 +125,7 @@ idf.py -p COMx monitor    # 串口输出 CPU 占用率
 - 多行滚动文本，显示项目信息和版本
 
 ### 系统状态
-- OLED：右上角实时帧率 `F:xx`；LCD：状态栏右侧实时帧率 `FPS:xx`
+- OLED：右上角实时帧率 `FPS:xx`；LCD：状态栏右侧实时帧率 `FPS:xx`
 - 串口每 ~1s 输出 CPU 占用率与帧率：`CPU:12%  FPS:35`
 - 输入时 LED 亮起指示
 
@@ -132,13 +133,13 @@ idf.py -p COMx monitor    # 串口输出 CPU 占用率
 
 | GPIO | 功能 |
 |------|------|
-| 2    | LCD DC / LED 输入指示 |
-| 4    | LCD RST |
+| 2    | LED 输入指示 |
 | 5    | LCD CS |
 | 13   | I2C SCL |
 | 14   | I2C SDA |
 | 18   | LCD SCK |
-| 22   | LCD BL (PWM) |
+| 21   | LCD DC |
+| 22   | LCD RST |
 | 23   | LCD MOSI |
 | 32   | 摇杆按键 SW |
 | 34   | 摇杆 X 轴 (ADC1_CH6) |

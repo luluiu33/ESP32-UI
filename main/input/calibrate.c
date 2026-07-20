@@ -25,19 +25,14 @@ void cal_init(void)
 
 void cal_draw(void)
 {
-    char buf[20];
-    char title[12];
     display_clear();
 
-    snprintf(title, sizeof(title), "Cal %s", names[step]);
-    display_draw_string(28, CAL_TITLE_Y, title);
-    snprintf(buf, sizeof(buf), "Step %d/4", step + 1);
-    display_draw_string(24, CAL_STEP_Y, buf);
+    display_printf(28, CAL_TITLE_Y, "Cal %s", names[step]);
+    display_printf(24, CAL_STEP_Y, "Step %d/4", step + 1);
 
     draw_arrow(CAL_ARROW_CX, CAL_ARROW_CY, step, 1);
 
-    snprintf(buf, sizeof(buf), "[%s]", names[step]);
-    display_draw_string(24, CAL_LABEL_Y, buf);
+    display_printf(24, CAL_LABEL_Y, "[%s]", names[step]);
 
     display_update();
 }

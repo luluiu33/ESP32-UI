@@ -362,7 +362,6 @@ void lcd_update_area(uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1)
         spi_device_transmit(spi_dev, &t);
     }
     cs_deselect();
-    frame_counter++;
 }
 
 void lcd_set_fps(uint8_t fps)
