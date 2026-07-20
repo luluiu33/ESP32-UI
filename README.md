@@ -63,13 +63,14 @@
 │   │   └── calibrate.h / .c    # 4步校准 UI + NVS 持久化
 │   ├── ui/
 │   │   ├── ui.h / .c           # 模式状态机 (MENU/CIRCLE/TEST/DISP_TEST/CAL/ABOUT)
-│   │   ├── menu.h / .c         # 滚动菜单 (4项, 3可见)
+│   │   ├── menu.h / .c         # 滚动菜单 (5项, 3可见)
 │   │   ├── about.h / .c        # 关于页 (可滚动文本)
 │   │   └── ui_common.h / .c    # 共享绘图原语 + 箭头绘制
 │   └── tests/
 │       ├── test_ui.h / .c      # 十字箭头方向测试
 │       ├── circle_test.h / .c  # 圆轨迹追踪 + 摇杆点
-│       └── display_test.h / .c # 动画演示集 (正弦波/弹球/进度条/图形/字库/跑马灯)
+│       ├── display_test.h / .c # 动画演示集 (正弦波/弹球/进度条/图形/字库/跑马灯)
+│       └── snake.h / .c        # LCD 贪吃蛇 (16×18 网格, 绿色蛇身, 摇杆控制)
 ├── docs/
 │   ├── esp32-wroom-32-datasheet.md
 │   ├── lcd_driver_info.md
@@ -107,7 +108,7 @@ idf.py -p COMx monitor    # 串口输出 CPU 占用率
 ## 功能
 
 ### 菜单系统
-- 4 个菜单项：Circle / Button / Display / About
+- 5 个菜单项：Circle / Button / Display / Snake / About
 - 滚动显示（3 项可见），摇杆上下切换，按下进入
 
 ### 测试模式

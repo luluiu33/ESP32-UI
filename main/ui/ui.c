@@ -1,3 +1,12 @@
+/* ============================================================
+ *  ui.c — UI 状态机实现
+ *
+ *  扁平枚举 + switch-case 调度。
+ *  主循环每帧调用 ui_process(ev, js) 处理输入和绘制。
+ *  长按中心按钮 (>500ms) 全局生效：
+ *    菜单模式下 → 进入校准
+ *    非菜单模式 → 返回主菜单
+ * ============================================================ */
 #include "ui.h"
 #include "input.h"
 #include "menu.h"
@@ -6,17 +15,19 @@
 #include "about.h"
 #include "circle_test.h"
 #include "display_test.h"
+#include "snake.h"
 #include "display.h"
 #include "display_layout.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#define LONG_PRESS_MS 500
+#define LONG_PRESS_MS 500          /* 长按判定阈值 (ms) */
 
-typedef enum { UI_MENU, UI_CIRCLE, UI_TEST, UI_DISP_TEST, UI_CAL, UI_ABOUT } ui_mode_t;
+/* ---- 状态枚举 ---- */
+typedef enum { UI_MENU, UI_CIRCLE, UI_TEST, UI_DISP_TEST, UI_SNAKE, UI_CAL, UI_ABOUT } ui_mode_t;
 
-static ui_mode_t mode = UI_MENU;
-static uint32_t center_press_ms = 0;
+static ui_mode_t mode = UI_MENU;            /* 当前模式 */
+static uint32_t center_press_ms = 0;        /* 中心按键按下时间戳 */
 
 void ui_init(void)
 {
@@ -30,6 +41,7 @@ uint8_t ui_is_test(void)
     return mode == UI_TEST;
 }
 
+/* 退出当前模式，回到主菜单 */
 void ui_exit_test(void)
 {
     mode = UI_MENU;
@@ -42,26 +54,28 @@ void ui_process(input_event_t ev, joy_state_t *js)
 {
     uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
 
+    /* ---- 长按检测 ---- */
     if (js->center) {
         if (center_press_ms == 0)
-            center_press_ms = now;
+            center_press_ms = now;          /* 记录按下时刻 */
     } else {
-        center_press_ms = 0;
+        center_press_ms = 0;                /* 已释放，清零 */
     }
 
     if (center_press_ms && (now - center_press_ms) > LONG_PRESS_MS) {
         center_press_ms = 0;
         if (mode == UI_MENU) {
-            mode = UI_CAL;
+            mode = UI_CAL;                  /* 菜单模式长按 → 进入校准 */
             display_set_title("Calibrate");
             cal_init();
             cal_draw();
             return;
         }
-        ui_exit_test();
+        ui_exit_test();                     /* 非菜单模式 → 回到主菜单 */
         return;
     }
 
+    /* ---- 模式调度 ---- */
     switch (mode) {
 
     case UI_MENU:
@@ -87,6 +101,12 @@ void ui_process(input_event_t ev, joy_state_t *js)
                 display_clear();
                 return;
             } else if (f == 3) {
+                mode = UI_SNAKE;
+                snake_init();
+                display_set_title("Snake");
+                display_clear();
+                return;
+            } else if (f == 4) {
                 mode = UI_ABOUT;
                 about_enter();
                 display_set_title("About");
@@ -94,7 +114,7 @@ void ui_process(input_event_t ev, joy_state_t *js)
                 return;
             }
         }
-        if (menu_is_dirty()) menu_draw();
+        if (menu_is_dirty()) menu_draw();   /* 焦点变化时惰性重绘 */
         break;
 
     case UI_DISP_TEST:
@@ -116,9 +136,13 @@ void ui_process(input_event_t ev, joy_state_t *js)
         test_ui_draw(js);
         break;
 
+    case UI_SNAKE:
+        snake_draw(ev, js);
+        break;
+
     case UI_CAL:
         if (cal_process()) {
-            mode = UI_MENU;
+            mode = UI_MENU;                 /* 校准完成 → 回主菜单 */
             menu_reset();
             display_set_title("Main Menu");
             menu_draw();
@@ -126,11 +150,8 @@ void ui_process(input_event_t ev, joy_state_t *js)
         break;
 
     case UI_ABOUT:
-        if (ev == EV_DOWN) {
-            about_scroll(1);
-        } else if (ev == EV_UP) {
-            about_scroll(-1);
-        }
+        if (ev == EV_DOWN)      about_scroll(1);
+        else if (ev == EV_UP)   about_scroll(-1);
         break;
     }
 }

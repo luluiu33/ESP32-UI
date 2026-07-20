@@ -5,6 +5,7 @@ idf_component_register(SRCS "main.c"
                              "input/input.c" "input/calibrate.c"
                              "tests/test_ui.c" "tests/circle_test.c"
                              "tests/display_test.c"
+                     "tests/snake.c"
                       INCLUDE_DIRS "." "drivers" "ui" "input" "tests")
 
 add_custom_command(TARGET ${COMPONENT_LIB} PRE_BUILD

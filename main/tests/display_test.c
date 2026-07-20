@@ -1,3 +1,10 @@
+/* ============================================================
+ *  display_test.c — 6 种动画演示实现
+ *
+ *  每种动画内部维护自己的状态变量，通过 disp_test_enter()
+ *  初始化。switch-case 调度到对应绘制函数。
+ *  进度条和弹跳球每帧更新一次物理量。
+ * ============================================================ */
 #include "display_test.h"
 #include "display.h"
 #include "display_layout.h"
@@ -9,13 +16,13 @@
 #define Y_MIN TEST_Y_MIN
 #define Y_MAX TEST_Y_MAX
 
-static int active_test = -1;
+static int active_test = -1;            /* 当前动画索引，-1 表示未进入 */
 static const char *test_names[DISP_TEST_COUNT] = {
     "Sine Wave", "Bounce Ball", "Progress", "Shapes", "Charset", "Marquee"
 };
 
 /* ================================================================
- * 1. Sine Wave - scrolling waveform
+ * 1. 正弦波 — 滚动波形
  * ================================================================ */
 #define SINE_AMP  18.0f
 #define SINE_CY   36.0f
@@ -39,7 +46,7 @@ static void draw_sine(void)
 }
 
 /* ================================================================
- * 2. Bouncing Ball - physics animation
+ * 2. 弹跳球 — 重力反弹动画
  * ================================================================ */
 static int ball_x, ball_y;
 static int ball_vx, ball_vy;
@@ -72,7 +79,7 @@ static void ball_update(void)
 }
 
 /* ================================================================
- * 3. Progress Bar - 0->100% fill
+ * 3. 进度条 — 0→100% 往返填充
  * ================================================================ */
 static int pb_value = 0;
 static int pb_dir = 1;
@@ -95,7 +102,7 @@ static void progress_update(void)
 }
 
 /* ================================================================
- * 4. Geometric Shapes - static composition
+ * 4. 几何图形 — 静态构图展示
  * ================================================================ */
 static void draw_shapes(void)
 {
@@ -112,7 +119,7 @@ static void draw_shapes(void)
 }
 
 /* ================================================================
- * 5. Character Set - all printable ASCII
+ * 5. 字符集 — 显示 ASCII 32~126
  * ================================================================ */
 static void draw_charset(void)
 {
@@ -132,7 +139,7 @@ static void draw_charset(void)
 }
 
 /* ================================================================
- * 6. Marquee - border crawling dot
+ * 6. 跑马灯 — 四角爬行亮线 (36px 尾迹)
  * ================================================================ */
 static int mx, my, mdx, mdy;
 
@@ -161,7 +168,7 @@ static void draw_marquee(void)
 }
 
 /* ================================================================
- * Public API
+ * 公共 API
  * ================================================================ */
 void disp_test_enter(int index)
 {

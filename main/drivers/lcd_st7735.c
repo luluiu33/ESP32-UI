@@ -1,3 +1,11 @@
+/* ============================================================
+ *  lcd_st7735.c — ST7735 LCD 驱动 (SPI, 128×160, RGB565)
+ *
+ *  40KB 帧缓冲 (160×128×2 bytes)，写入后通过 SPI 批量提交。
+ *  支持全屏/局部刷新，颜色使用 COLOR_* 宏或 RGB565()。
+ *  字库复用 font_6x8.h (6×8 ASCII)。
+ *  初始化序列为 ST7735S 专用，与 ST7735R 不通用。
+ * ============================================================ */
 #include "lcd_st7735.h"
 #include "font_6x8.h"
 #include "freertos/FreeRTOS.h"
@@ -11,30 +19,31 @@
 
 #define TAG "ST7735"
 
-/* ── 帧缓冲 128 × 160 × 2 bytes = 40KB ── */
-static uint16_t framebuf[LCD_HEIGHT][LCD_WIDTH];
+/* ---- 帧缓冲 128 × 160 × 2 bytes = 40KB ---- */
+static uint16_t framebuf[LCD_HEIGHT][LCD_WIDTH];  /* [y][x], RGB565 */
 static spi_device_handle_t spi_dev;
 static uint32_t frame_counter = 0;
 
-/* ── 底层 SPI 操作 ── */
+/* ==================== SPI 底层操作 ==================== */
+
 static void cs_select(void)
 {
-    gpio_set_level(LCD_CS, 0);
+    gpio_set_level(LCD_CS, 0);   /* 片选拉低 */
 }
 
 static void cs_deselect(void)
 {
-    gpio_set_level(LCD_CS, 1);
+    gpio_set_level(LCD_CS, 1);   /* 片选拉高 */
 }
 
 static void dc_cmd(void)
 {
-    gpio_set_level(LCD_DC, 0);
+    gpio_set_level(LCD_DC, 0);   /* DC=0 → 命令 */
 }
 
 static void dc_data(void)
 {
-    gpio_set_level(LCD_DC, 1);
+    gpio_set_level(LCD_DC, 1);   /* DC=1 → 数据 */
 }
 
 static void spi_write(const uint8_t *data, size_t len)
@@ -67,7 +76,9 @@ static void lcd_write_data_byte(uint8_t data)
     lcd_write_data(&data, 1);
 }
 
-/* ── ST7735 初始化序列 ── */
+/* ==================== ST7735 初始化序列 (ST7735S 专用) ==================== */
+
+/* 硬件复位时序 */
 static void st7735_hw_reset(void)
 {
     gpio_set_level(LCD_RESET, 0);
@@ -76,22 +87,23 @@ static void st7735_hw_reset(void)
     vTaskDelay(120 / portTICK_PERIOD_MS);
 }
 
+/* 初始化命令序列 (与 ST7735R 不通用) */
 static void st7735_init_seq(void)
 {
-    lcd_write_cmd(0x11);              // SLPOUT
+    lcd_write_cmd(0x11);               /* 睡眠退出 */
     vTaskDelay(120 / portTICK_PERIOD_MS);
 
-    lcd_write_cmd(0xB1);              // FRMCTR1
+    lcd_write_cmd(0xB1);               /* 帧率控制 1 */
     lcd_write_data_byte(0x05);
     lcd_write_data_byte(0x3C);
     lcd_write_data_byte(0x3C);
 
-    lcd_write_cmd(0xB2);              // FRMCTR2
+    lcd_write_cmd(0xB2);               /* 帧率控制 2 */
     lcd_write_data_byte(0x05);
     lcd_write_data_byte(0x3C);
     lcd_write_data_byte(0x3C);
 
-    lcd_write_cmd(0xB3);              // FRMCTR3
+    lcd_write_cmd(0xB3);               /* 帧率控制 3 (部分模式) */
     lcd_write_data_byte(0x05);
     lcd_write_data_byte(0x3C);
     lcd_write_data_byte(0x3C);
@@ -99,69 +111,70 @@ static void st7735_init_seq(void)
     lcd_write_data_byte(0x3C);
     lcd_write_data_byte(0x3C);
 
-    lcd_write_cmd(0xB4);              // INVCTR (Dot inversion)
+    lcd_write_cmd(0xB4);               /* 反转控制 (点反转) */
     lcd_write_data_byte(0x03);
 
-    lcd_write_cmd(0xC0);              // PWCTR1
+    lcd_write_cmd(0xC0);               /* 电源控制 1 */
     lcd_write_data_byte(0x28);
     lcd_write_data_byte(0x08);
     lcd_write_data_byte(0x04);
 
-    lcd_write_cmd(0xC1);              // PWCTR2
+    lcd_write_cmd(0xC1);               /* 电源控制 2 */
     lcd_write_data_byte(0xC0);
 
-    lcd_write_cmd(0xC2);              // PWCTR3
+    lcd_write_cmd(0xC2);               /* 电源控制 3 */
     lcd_write_data_byte(0x0D);
     lcd_write_data_byte(0x00);
 
-    lcd_write_cmd(0xC3);              // PWCTR4
+    lcd_write_cmd(0xC3);               /* 电源控制 4 */
     lcd_write_data_byte(0x8D);
     lcd_write_data_byte(0x2A);
 
-    lcd_write_cmd(0xC4);              // PWCTR5
+    lcd_write_cmd(0xC4);               /* 电源控制 5 */
     lcd_write_data_byte(0x8D);
     lcd_write_data_byte(0xEE);
 
-    lcd_write_cmd(0xC5);              // VCOM
+    lcd_write_cmd(0xC5);               /* VCOM 控制 */
     lcd_write_data_byte(0x1A);
 
-    lcd_write_cmd(0x36);              // MADCTL
+    lcd_write_cmd(0x36);               /* 内存访问控制 (RGB 顺序) */
     lcd_write_data_byte(0xC0);
 
-    lcd_write_cmd(0xE0);              // GMCTRP1 (positive gamma)
+    lcd_write_cmd(0xE0);               /* 正 Gamma 校正 */
     const uint8_t gamma_pos[] = { 0x04, 0x22, 0x07, 0x0A, 0x2E, 0x30, 0x25,
                                    0x2A, 0x28, 0x26, 0x2E, 0x3A, 0x00, 0x01,
                                    0x03, 0x13 };
     for (int i = 0; i < 16; i++) lcd_write_data_byte(gamma_pos[i]);
 
-    lcd_write_cmd(0xE1);              // GMCTRN1 (negative gamma)
+    lcd_write_cmd(0xE1);               /* 负 Gamma 校正 */
     const uint8_t gamma_neg[] = { 0x04, 0x16, 0x06, 0x0D, 0x2D, 0x26, 0x23,
                                    0x27, 0x27, 0x25, 0x2D, 0x3B, 0x00, 0x01,
                                    0x04, 0x13 };
     for (int i = 0; i < 16; i++) lcd_write_data_byte(gamma_neg[i]);
 
-    lcd_write_cmd(0x3A);              // COLMOD
-    lcd_write_data_byte(0x05);        // 16-bit RGB565
+    lcd_write_cmd(0x3A);               /* 颜色模式 */
+    lcd_write_data_byte(0x05);         /* 16-bit RGB565 */
 
-    lcd_write_cmd(0x29);              // DISPON
+    lcd_write_cmd(0x29);               /* 显示开启 */
     vTaskDelay(50 / portTICK_PERIOD_MS);
 }
 
-/* ── SPI 总线初始化 ── */
+/* ==================== SPI / GPIO 初始化 ==================== */
+
 static void spi_init(void)
 {
     spi_bus_config_t bus = {
         .mosi_io_num = LCD_SPI_MOSI,
-        .miso_io_num = -1,
+        .miso_io_num = -1,             /* LCD 无 MISO */
         .sclk_io_num = LCD_SPI_CLK,
         .quadwp_io_num = -1,
         .quadhd_io_num = -1,
         .max_transfer_sz = LCD_WIDTH * LCD_HEIGHT * 2 + 8,
     };
     spi_device_interface_config_t dev = {
-        .clock_speed_hz = 26 * 1000 * 1000,
-        .mode = 0,
-        .spics_io_num = -1,
+        .clock_speed_hz = 26 * 1000 * 1000,  /* 26MHz */
+        .mode = 0,                             /* CPOL=0, CPHA=0 */
+        .spics_io_num = -1,                   /* 软件 CS */
         .queue_size = 1,
         .flags = SPI_DEVICE_NO_DUMMY,
     };
@@ -169,17 +182,16 @@ static void spi_init(void)
     ESP_ERROR_CHECK(spi_bus_add_device(LCD_SPI_HOST, &dev, &spi_dev));
 }
 
-/* ── GPIO 初始化 ── */
 static void gpio_init(void)
 {
     const int pins[] = { LCD_RESET, LCD_DC, LCD_CS };
     for (int i = 0; i < 3; i++) {
         gpio_set_direction(pins[i], GPIO_MODE_OUTPUT);
-        gpio_set_level(pins[i], 1);
+        gpio_set_level(pins[i], 1);   /* 默认高电平 */
     }
 }
 
-/* ── 公开 API ── */
+/* ==================== 生命周期 ==================== */
 
 void lcd_init(void)
 {
@@ -190,15 +202,16 @@ void lcd_init(void)
     lcd_clear(COLOR_BLACK);
 }
 
+/* 设置 CASET + RASET 窗口 (用于局部刷新) */
 void lcd_set_window(uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1)
 {
     uint8_t col[] = { (uint8_t)(x0 >> 8), x0, (uint8_t)(x1 >> 8), x1 };
     uint8_t row[] = { (uint8_t)(y0 >> 8), y0, (uint8_t)(y1 >> 8), y1 };
-    lcd_write_cmd(0x2A);
+    lcd_write_cmd(0x2A);              /* 列地址设置 */
     lcd_write_data(col, 4);
-    lcd_write_cmd(0x2B);
+    lcd_write_cmd(0x2B);              /* 行地址设置 */
     lcd_write_data(row, 4);
-    lcd_write_cmd(0x2C);
+    lcd_write_cmd(0x2C);              /* 内存写 */
 }
 
 void lcd_clear(uint16_t color)
@@ -214,13 +227,14 @@ void lcd_fill(uint16_t color)
             framebuf[y][x] = color;
 }
 
+/* 全帧刷新 → SPI 发送 */
 void lcd_update(void)
 {
     lcd_set_window(0, 0, LCD_WIDTH - 1, LCD_HEIGHT - 1);
     cs_select();
     dc_data();
     spi_transaction_t t = {
-        .length = LCD_WIDTH * LCD_HEIGHT * 2 * 8,
+        .length = LCD_WIDTH * LCD_HEIGHT * 2 * 8,  /* 40KB */
         .tx_buffer = framebuf,
     };
     spi_device_transmit(spi_dev, &t);
@@ -228,12 +242,15 @@ void lcd_update(void)
     frame_counter++;
 }
 
+/* ==================== 图元 ==================== */
+
 void lcd_draw_pixel(uint8_t x, uint8_t y, uint16_t color)
 {
     if (x >= LCD_WIDTH || y >= LCD_HEIGHT) return;
     framebuf[y][x] = color;
 }
 
+/* 填充矩形 (带边界裁剪) */
 void lcd_fill_rect(uint8_t x, uint8_t y, uint8_t w, uint8_t h, uint16_t color)
 {
     if (x >= LCD_WIDTH || y >= LCD_HEIGHT) return;
@@ -264,6 +281,7 @@ void lcd_draw_vline(uint8_t x, uint8_t y, uint8_t h, uint16_t color)
         lcd_draw_pixel(x, y + i, color);
 }
 
+/* Bresenham 直线 */
 void lcd_draw_line(uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1, uint16_t color)
 {
     int dx = x1 > x0 ? x1 - x0 : x0 - x1;
@@ -280,6 +298,7 @@ void lcd_draw_line(uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1, uint16_t colo
     }
 }
 
+/* Bresenham 圆 */
 void lcd_draw_circle(uint8_t cx, uint8_t cy, uint8_t r, uint16_t color, uint8_t fill)
 {
     int x = 0, y = r, d = 3 - 2 * r;
@@ -304,6 +323,7 @@ void lcd_draw_circle(uint8_t cx, uint8_t cy, uint8_t r, uint16_t color, uint8_t 
     }
 }
 
+/* 单色位图渲染 (data 按行排列, MSB 优先) */
 void lcd_draw_bitmap(uint8_t x, uint8_t y, uint8_t w, uint8_t h, const uint8_t *data, uint16_t fg, uint16_t bg)
 {
     for (uint8_t row = 0; row < h; row++) {
@@ -314,6 +334,8 @@ void lcd_draw_bitmap(uint8_t x, uint8_t y, uint8_t w, uint8_t h, const uint8_t *
         }
     }
 }
+
+/* ==================== 文字 ==================== */
 
 void lcd_draw_char(uint8_t x, uint8_t y, char c, uint16_t fg, uint16_t bg)
 {
@@ -332,6 +354,7 @@ void lcd_draw_string(uint8_t x, uint8_t y, const char *str, uint16_t fg, uint16_
     lcd_draw_stringf(x, y, fg, bg, "%s", str);
 }
 
+/* printf 风格格式化输出，支持 \n 换行和自动折行 */
 void lcd_draw_stringf(uint8_t x, uint8_t y, uint16_t fg, uint16_t bg, const char *fmt, ...)
 {
     char buf[128];
@@ -345,9 +368,11 @@ void lcd_draw_stringf(uint8_t x, uint8_t y, uint16_t fg, uint16_t bg, const char
         if (*p == '\n') { x = ox; y += 8; continue; }
         lcd_draw_char(x, y, *p, fg, bg);
         x += 6;
-        if (x + 6 > LCD_WIDTH) { x = ox; y += 8; }
+        if (x + 6 > LCD_WIDTH) { x = ox; y += 8; }  /* 自动换行 */
     }
 }
+
+/* ==================== 局部刷新 / 性能 ==================== */
 
 void lcd_update_area(uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1)
 {
@@ -366,7 +391,7 @@ void lcd_update_area(uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1)
 
 void lcd_set_fps(uint8_t fps)
 {
-    (void)fps;
+    (void)fps;  /* 预留 */
 }
 
 uint32_t lcd_get_frames(void)

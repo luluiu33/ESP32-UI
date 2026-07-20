@@ -1,3 +1,10 @@
+/* ============================================================
+ *  circle_test.c — 圆轨迹追踪测试实现
+ *
+ *  校准后摇杆值映射到圆上坐标。超出圆周时按比例压缩。
+ *  像素不变时跳过重绘 (prev_px / prev_py 惰性检测)。
+ *  双屏模式下各屏独立映射自己的半径。
+ * ============================================================ */
 #include "circle_test.h"
 #include "input.h"
 #include "display.h"
@@ -13,7 +20,7 @@
 #define LCD_DOT_R      6
 #define LCD_CENTER_R   4
 
-static int prev_px = 0, prev_py = 0;
+static int prev_px = 0, prev_py = 0;   /* 上一次绘制位置（惰性检查） */
 
 void circle_test_reset(void)
 {
@@ -21,6 +28,7 @@ void circle_test_reset(void)
     prev_py = 1;
 }
 
+/* 将校准后摇杆值 (±2048) 映射到圆范围内的像素坐标 */
 static void calc_pos(int16_t *px, int16_t *py, int rad)
 {
     int16_t cx, cy;
@@ -29,17 +37,20 @@ static void calc_pos(int16_t *px, int16_t *py, int rad)
     int ox = cx;
     int oy = cy;
 
+    /* 小范围死区 (±400) → 视为回中 */
     if (ox > -400 && ox < 400) ox = 0;
     if (oy > -400 && oy < 400) oy = 0;
 
     *px = ox * rad / 2048;
     *py = oy * rad / 2048;
 
+    /* 钳位到圆外接正方形 */
     if (*px < -rad) *px = -rad;
     if (*px >  rad) *px =  rad;
     if (*py < -rad) *py = -rad;
     if (*py >  rad) *py =  rad;
 
+    /* 若在圆外，按比例压缩到圆周上 */
     int d_sq = (*px) * (*px) + (*py) * (*py);
     int r_sq = rad * rad;
     if (d_sq > r_sq) {
@@ -59,6 +70,7 @@ void circle_test_draw(joy_state_t *js)
     int16_t px, py;
     calc_pos(&px, &py, CIRCLE_RAD);
 
+    /* 位置未变 → 跳过刷新 */
     if (px == prev_px && py == prev_py)
         return;
     prev_px = px;

@@ -1,8 +1,15 @@
+/* ============================================================
+ *  display.c — 统一显示抽象层实现
+ *
+ *  通过 #ifdef CONFIG_DISPLAY_OLED / CONFIG_DISPLAY_LCD
+ *  在编译时将所有 display_* 调用转发到对应的后端驱动。
+ *  支持单屏或双屏同时编译。
+ * ============================================================ */
 #include "display.h"
 #include "main.h"
 
 #if !defined(CONFIG_DISPLAY_OLED) && !defined(CONFIG_DISPLAY_LCD)
-#error "At least one display type must be selected: run 'idf.py menuconfig' and enable OLED and/or LCD"
+#error "请至少启用一种显示器：在 main.h 中定义 CONFIG_DISPLAY_OLED 或 CONFIG_DISPLAY_LCD"
 #endif
 
 #ifdef CONFIG_DISPLAY_OLED
@@ -16,17 +23,20 @@
 #include <stdbool.h>
 #include <stdarg.h>
 
-#define TITLE_BAR_PAGES 2
-#define STATUS_BAR_H 16
+#define TITLE_BAR_PAGES 2       /* OLED 标题栏占 2 个 page */
+#define STATUS_BAR_H 16          /* LCD 标题栏像素高度 */
 
-static char title_buf[16] = "Main Menu";
+/* ---- 状态变量 ---- */
+static char title_buf[16] = "Main Menu";              /* 当前标题文本 */
 #ifdef CONFIG_DISPLAY_OLED
-static uint8_t fps_val = 0;
+static uint8_t fps_val = 0;                            /* OLED FPS 缓存 */
 #endif
 #ifdef CONFIG_DISPLAY_LCD
-static char lcd_fps_buf[12] = "FPS:--";
+static char lcd_fps_buf[12] = "FPS:--";               /* LCD FPS 字符串缓存 */
 #endif
-static bool title_dirty = true;
+static bool title_dirty = true;                        /* 标题栏需刷新标记 */
+
+/* ==================== 生命周期 ==================== */
 
 void display_init(void)
 {
@@ -40,6 +50,7 @@ void display_init(void)
 
 void display_clear(void)
 {
+    /* 清除帧缓冲 + 绘制标题栏（全屏刷新前调用） */
 #ifdef CONFIG_DISPLAY_OLED
     ssd1306_clear();
     char fps_str[8];
@@ -49,8 +60,8 @@ void display_clear(void)
     ssd1306_draw_string(fx, 0, fps_str);
 #endif
 #ifdef CONFIG_DISPLAY_LCD
-    lcd_fill(COLOR_WHITE);
-    lcd_fill_rect(0, 0, LCD_WIDTH, STATUS_BAR_H, COLOR_BLACK);
+    lcd_fill(COLOR_WHITE);                              /* 清白背景 */
+    lcd_fill_rect(0, 0, LCD_WIDTH, STATUS_BAR_H, COLOR_BLACK); /* 黑底标题栏 */
     lcd_draw_string(0, 4, title_buf, COLOR_WHITE, COLOR_BLACK);
     uint8_t lcd_fx = LCD_WIDTH - strlen(lcd_fps_buf) * 6;
     lcd_draw_string(lcd_fx, 4, lcd_fps_buf, COLOR_WHITE, COLOR_BLACK);
@@ -60,6 +71,7 @@ void display_clear(void)
 
 void display_update(void)
 {
+    /* 提交帧缓冲到硬件 */
 #ifdef CONFIG_DISPLAY_OLED
     ssd1306_update();
 #endif
@@ -67,6 +79,8 @@ void display_update(void)
     lcd_update();
 #endif
 }
+
+/* ==================== 标题栏 ==================== */
 
 void display_set_title(const char *title)
 {
@@ -77,6 +91,7 @@ void display_set_title(const char *title)
 
 void display_update_title(void)
 {
+    /* 惰性刷新：只有 title_dirty 时才真正刷新 */
     if (!title_dirty) return;
     title_dirty = false;
 #ifdef CONFIG_DISPLAY_OLED
@@ -96,6 +111,9 @@ void display_update_title(void)
     lcd_update_area(0, 0, LCD_WIDTH - 1, STATUS_BAR_H - 1);
 #endif
 }
+
+/* ==================== 图元 ==================== */
+/* 所有图元函数：OLED 用白色 (1)，LCD 用黑色 (COLOR_BLACK) */
 
 void display_draw_pixel(uint8_t x, uint8_t y)
 {
@@ -170,6 +188,8 @@ void display_draw_bitmap(uint8_t x, uint8_t y, uint8_t w, uint8_t h, const uint8
 #endif
 }
 
+/* ==================== 文字 ==================== */
+
 void display_draw_char(uint8_t x, uint8_t y, char c)
 {
 #ifdef CONFIG_DISPLAY_OLED
@@ -205,6 +225,9 @@ void display_printf(uint8_t x, uint8_t y, const char *fmt, ...)
 #endif
 }
 
+/* ==================== 圆角矩形 ==================== */
+
+/* 整数平方根（用于圆角弧线计算） */
 static int int_sqrt(int n)
 {
     int s = 0;
@@ -243,6 +266,8 @@ void display_draw_round_rect(uint8_t x, uint8_t y, uint8_t w, uint8_t h, uint8_t
     }
 }
 
+/* ==================== FPS / 性能 ==================== */
+
 void display_set_fps(uint8_t fps)
 {
 #ifdef CONFIG_DISPLAY_OLED
@@ -256,13 +281,14 @@ void display_set_fps(uint8_t fps)
 
 void display_update_fps(int elapsed_ms)
 {
+    /* 根据 elapsed_ms 和帧计数计算实际 FPS */
 #ifdef CONFIG_DISPLAY_OLED
     {
         int f = ssd1306_get_frames() * 1000 / (elapsed_ms ? elapsed_ms : 1);
         if (f > 99) f = 99;
         if ((uint8_t)f != fps_val) {
             fps_val = (uint8_t)f;
-            title_dirty = true;
+            title_dirty = true;         /* FPS 变化 → 下帧刷新标题栏 */
         }
     }
 #endif
@@ -282,6 +308,7 @@ void display_update_fps(int elapsed_ms)
 
 uint32_t display_get_frames(void)
 {
+    /* 双屏模式返回两屏帧计数之和 */
     uint32_t sum = 0;
 #ifdef CONFIG_DISPLAY_OLED
     sum += ssd1306_get_frames();
